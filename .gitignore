@@ -11,6 +11,13 @@ PROJECT-VISION.md
 industrial_architecture_diagram.html
 industrial_architecture_diagram.png
 
+# Ignore Terraform state, cache, and provider binaries
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+terraform/.terraform/
+terraform/**/*.terraform.lock.hcl
+terraform/**/*.exe
+
 # Ignore Python cache and output
 __pycache__/
 *.pyc
