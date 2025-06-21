@@ -1,0 +1,21 @@
+# Ignore Python virtual environments
+.venv/
+
+# Ignore environment variable files
+.env
+.env.*
+
+# Ignore project documentation and diagrams
+PROJECT-DECISIONS.md
+PROJECT-VISION.md
+industrial_architecture_diagram.html
+industrial_architecture_diagram.png
+
+# Ignore Python cache and output
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore VSCode settings
+.vscode/
