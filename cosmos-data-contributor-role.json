@@ -1,0 +1,21 @@
+
+{
+    "RoleName": "Custom Cosmos DB Data Contributor",
+    "Type": "CustomRole",
+    "Description": "Can read, write, and delete documents in Cosmos DB containers.",
+    "AssignableScopes": [
+    "/subscriptions/757741e5-1190-400e-bc79-73ad919655ab/resourceGroups/idtwin-dev-rg/providers/Microsoft.DocumentDB/databaseAccounts/idtwin-dev-cosmos"
+],
+    "Permissions": [
+        {
+            "DataActions": [
+                "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/create",
+                "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/read",
+                "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/replace",
+                "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/upsert",
+                "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/delete"
+            ],
+            "NotDataActions": []
+        }
+    ]
+}

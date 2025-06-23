@@ -1,110 +1,172 @@
-# Industrial Digital Twin Multi-Agent Platform - Terraform Infrastructure
+# Industrial Digital Twin Multi-Agent Platform
 
-This project uses a modular Terraform setup to provision a minimal, cost-effective dev environment in Azure (East US 2).
+This repository contains the infrastructure and application code for an Industrial Digital Twin platform. It leverages Azure services to ingest, process, and store real-time data from various industrial simulators (SCADA, PLC, GPS). The platform is designed to be a foundation for building advanced analytics, real-time dashboards, and multi-agent autonomous systems.
 
-## Directory Structure
+The project is architected with a modular Terraform setup for infrastructure-as-code, and a robust Python application layer for simulation and stream processing.
 
-- `terraform/modules/` — Reusable modules for Azure resources (Event Hubs, AKS, Cosmos DB, PostgreSQL, Redis, Blob Storage, Networking)
-- `terraform/environments/dev/` — Dev environment configuration (ready to deploy)
-- `.github/copilot-instructions.md` — Copilot workspace instructions
+## Architecture Overview
 
-## Quickstart (Dev Only)
+The platform consists of several key components:
 
-1. Install [Terraform](https://www.terraform.io/downloads.html) and [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli).
-2. Authenticate with Azure CLI:
-   ```sh
-   az login
-   ```
-3. Change directory to the dev environment:
-   ```sh
-   cd terraform/environments/dev
-   ```
-4. Initialize Terraform:
-   ```sh
-   terraform init
-   ```
-5. Review and apply the plan:
-   ```sh
-   terraform plan
-   terraform apply
-   ```
+- **Data Simulators (`/simulators`):** Python scripts that mimic real-world industrial equipment (SCADA, PLC, GPS) by generating and sending event data.
+- **Event Ingestion (Azure Event Hubs):** A highly scalable event streaming service that decouples data producers from consumers.
+- **Stream Processing (`event_stream_processor.py`):** A unified Python application that consumes events from Event Hubs, processes them, and archives them in a database.
+- **Data Storage (Azure Cosmos DB):** A multi-model NoSQL database used to store the processed event data.
+- **Web UI (`/dashboard`):** (In Development) A real-time dashboard for visualizing data and system status.
+- **Intelligent Agents (`/agents`):** (In Development) The framework for building multi-agent systems that can analyze data and perform autonomous actions.
 
-> **Note:** Only the dev environment is configured for deployment. Higher environments (staging, prod, dr) will have modules but are not to be deployed yet.
+For a visual representation, see the [architecture diagram](industrial_architecture_diagram.html).
 
-## Cost Optimization
-- All resources are provisioned with minimal, dev-grade SKUs to keep costs low.
-- For production, update variables and modules for scale, redundancy, and compliance.
+## Getting Started
+
+Follow these steps to set up the infrastructure and run the simulation environment.
+
+### 1. Prerequisites
+
+- [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
+- [Terraform](https://www.terraform.io/downloads.html)
+- [Python 3.8+](https://www.python.org/downloads/)
+
+### 2. Infrastructure Deployment (Terraform)
+
+First, deploy the necessary Azure resources using the provided Terraform scripts.
+
+1.  **Authenticate with Azure:**
+    ```sh
+    az login
+    ```
+2.  **Navigate to the dev environment directory:**
+    ```sh
+    cd terraform/environments/dev
+    ```
+3.  **Initialize and apply the Terraform plan:**
+    ```sh
+    terraform init
+    terraform plan
+    terraform apply
+    ```
+    This will provision all the necessary resources, including Event Hubs, Cosmos DB, and a Key Vault.
+
+### 3. Application Setup
+
+Next, configure your local environment to run the Python simulators and processor.
+
+1.  **Navigate to the simulators directory:**
+    ```sh
+    cd ../../../simulators 
+    ```
+    *(Note: If you are in `terraform/environments/dev`, navigate back to the root and then into `simulators`)*
+
+2.  **Create and activate a Python virtual environment:**
+    ```powershell
+    # For Windows
+    python -m venv .venv
+    .venv\Scripts\Activate
+    ```
+    ```sh
+    # For macOS/Linux
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+3.  **Install dependencies:**
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+### 4. Security & Configuration
+
+The application uses `DefaultAzureCredential` for secure, passwordless access to Azure resources.
+
+1.  **Configure Environment File:**
+    Create a `.env` file by copying the sample and adding your Key Vault URI.
+    ```powershell
+    # In the 'simulators' directory
+    copy .env.sample .env
+    ```
+    Now, open `.env` and set the `KEY_VAULT_URI` variable:
+    ```
+    KEY_VAULT_URI="https://<your-key-vault-name>.vault.azure.net/"
+    ```
+
+2.  **Assign RBAC Permissions:**
+    Your user account needs data-plane permissions on the Azure resources. Run the following Azure CLI commands, replacing `<your-principal-object-id>` with your user's Object ID (`az ad signed-in-user show --query id -o tsv`).
+
+    ```sh
+    # Set your identity's object ID
+    PRINCIPAL_ID="<your-principal-object-id>"
+
+    # Set your resource names (these are the defaults from Terraform)
+    KEY_VAULT_NAME="idtwin-dev-kv"
+    COSMOS_ACCOUNT_NAME="idtwin-dev-cosmos"
+    RESOURCE_GROUP_NAME="idtwin-dev-rg"
+    EVENT_HUB_NAMESPACE="idtwin-dev-eh-ns"
+    SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+    
+    # 1. Grant access to Key Vault secrets
+    az keyvault set-policy --name $KEY_VAULT_NAME --object-id $PRINCIPAL_ID --secret-permissions get list
+
+    # 2. Grant access to Cosmos DB (Data and Control Plane)
+    az cosmosdb sql role assignment create --account-name $COSMOS_ACCOUNT_NAME --resource-group $RESOURCE_GROUP_NAME --role-definition-name "Cosmos DB Built-in Data Contributor" --principal-id $PRINCIPAL_ID --scope "/"
+    az cosmosdb sql role assignment create --account-name $COSMOS_ACCOUNT_NAME --resource-group $RESOURCE_GROUP_NAME --role-definition-name "Cosmos DB Operator" --principal-id $PRINCIPAL_ID --scope "/"
+
+    # 3. Grant access to Event Hubs
+    az role assignment create --assignee $PRINCIPAL_ID --role "Azure Event Hubs Data Owner" --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.EventHub/namespaces/$EVENT_HUB_NAMESPACE"
+    ```
+
+3.  **Configure Firewalls:**
+    For local development, add your public IP address to the firewall rules for Key Vault and Cosmos DB in the Azure Portal.
+
+## Running a Full Simulation
+
+The easiest way to run the platform is using the `run_simulation.py` script, which starts and manages a simulator and its corresponding stream processor in one command.
+
+1.  **Ensure your virtual environment is active** and you are in the `simulators` directory.
+2.  **Run the simulation:**
+    Choose a stream type (`scada`, `plc`, or `gps`) and run the script.
+
+    ```powershell
+    # Example: Run the SCADA simulation and processor
+    python run_simulation.py scada
+    ```
+    You will see interleaved output from both the simulator and the processor, showing events being sent and received in real-time.
+
+    ```
+    [PROCESSOR - SCADA]: Initializing processor for stream type: scada...
+    [PROCESSOR - SCADA]: PROCESSOR_READY: Now listening for events.
+    
+    Processor is ready. Starting the simulator.
+    
+    [SIMULATOR - SCADA]: Sending event: {"id": "...", "value": 101.5}
+    [PROCESSOR - SCADA]: Received event: {"id": "...", "value": 101.5}
+    [PROCESSOR - SCADA]: Successfully inserted event ... into Cosmos DB.
+    ...
+    ```
+3.  **To stop the simulation**, press `Ctrl+C`.
+
+## Project Structure
+
+- `.github/`: GitHub-specific files, including Copilot instructions.
+- `agents/`: Future home for the multi-agent system.
+- `dashboard/`: Future home for the web UI dashboard.
+- `simulators/`: Contains all Python scripts for data simulation (`*_simulator.py`), stream processing (`event_stream_processor.py`), and the runner script (`run_simulation.py`).
+- `terraform/`: Contains all Terraform code, organized by `modules` and `environments`.
+- `PROJECT-DECISIONS.md`: A log of key architectural and technical decisions.
+- `PROJECT-VISION.md`: The high-level vision and goals for the platform.
 
 ## Next Steps
-- Add/modify modules in `terraform/modules/` as needed.
-- Expand environment configs for staging/prod/dr (do not deploy yet).
-- See `PROJECT-VISION.md` for architecture and requirements.
 
-## Industrial Digital Twin Multi-Agent Platform: Dev Environment
+With the core infrastructure and data pipeline operational, the project is moving into its next phase:
 
-### Current State
-- All core Azure resources for the dev environment are provisioned via Terraform modules:
-  - Resource Group
-  - Virtual Network, Subnet, NSG
-  - Managed Identity
-  - Event Hubs Namespace and Event Hubs (gps, plc, scada)
-  - AKS (Kubernetes) Cluster
-  - Cosmos DB Account
-  - PostgreSQL Flexible Server (Central US, name: idtwin-dev-pg-centralus)
-  - Redis Cache
-  - Blob Storage Account
+1.  **Real-Time Dashboard:** Develop a web-based dashboard in the `/dashboard` directory to visualize the incoming data from Cosmos DB.
+2.  **Data Query API:** Create a secure API to allow the dashboard and other services to query the historical data stored in Cosmos DB.
+3.  **Intelligent Agent Framework:** Begin development of the first intelligent agent in the `/agents` directory, which will perform analysis or anomaly detection on a data stream.
 
-### PostgreSQL Region/Name Workaround
-- Azure region restrictions and name conflicts required deploying PostgreSQL Flexible Server in `Central US` with a unique name (`idtwin-dev-pg-centralus`).
-- If you encounter region or name errors, update the region or use a unique name in `main.tf`.
+## Troubleshooting
 
-### AKS Cluster Troubleshooting
-- If Terraform fails to update the AKS cluster with an error about the cluster not being in the 'Running' state, check the Azure Portal and start or troubleshoot the cluster as needed.
-
-### How to Verify Resources
-- Run `terraform state list` in `terraform/environments/dev` to see all resources managed by Terraform.
-- Check the Azure Portal for the resource group and all resources.
-
-## Simulators and Consumers (Event Hub Data Validation)
-
-All simulators and consumers are located in the `simulators/` directory. They securely fetch Event Hub connection strings and names from Azure Key Vault.
-
-### Prerequisites
-- Python 3.8+
-- Azure CLI authenticated (for local dev, to use DefaultAzureCredential)
-- Key Vault secrets set for each Event Hub (see earlier instructions)
-
-### Setup (First Time)
-```powershell
-cd simulators
-python -m venv .venv
-.venv\Scripts\Activate
-pip install -r requirements.txt
-```
-
-### Set Key Vault URI (if not using default)
-```powershell
-$env:KEY_VAULT_URI="https://idtwin-dev-kv.vault.azure.net/"
-```
-
-### Run Simulators
-```powershell
-python scada_simulator.py
-python plc_simulator.py
-python gps_simulator.py
-```
-
-### Run Consumers
-```powershell
-python scada_eventhub_consumer.py
-python plc_eventhub_consumer.py
-python gps_eventhub_consumer.py
-```
-
-- You can run simulators and consumers in separate terminals for real-time validation.
-- All secrets are fetched from Azure Key Vault; no secrets are stored in .env files.
-- If you need to change the event rate, set the appropriate environment variable (e.g., `$env:SCADA_EVENT_RATE=10`).
-
----
-
-For more details and project decisions, see PROJECT-DECISIONS.md.
+- **`FileNotFoundError`:** Ensure you are running Python scripts from the correct directory (usually the `simulators` directory). The `run_simulation.py` script is the recommended entry point.
+- **Authentication/Authorization Errors:**
+    - Double-check that you are logged in with `az login`.
+    - Verify that the RBAC permissions have been assigned correctly and have had time to propagate (can take a few minutes).
+    - Make sure your IP address is added to the Key Vault and Cosmos DB firewalls.
+- For a detailed log of design choices and troubleshooting steps, see `PROJECT-DECISIONS.md`.

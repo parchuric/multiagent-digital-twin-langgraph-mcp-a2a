@@ -1,0 +1,12 @@
+{
+    "Name": "Custom Cosmos DB Data Contributor",
+    "IsCustom": true,
+    "Description": "Can read, write, and delete documents in Cosmos DB containers.",
+    "AssignableScopes": [
+        "/subscriptions/757741e5-1190-400e-bc79-73ad919655ab/resourceGroups/idtwin-dev-rg/providers/Microsoft.DocumentDB/databaseAccounts/idtwin-dev-cosmos"
+    ],
+    "DataActions": [
+        "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/*"
+    ],
+    "NotDataActions": []
+}

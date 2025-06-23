@@ -2,6 +2,7 @@ import os
 import time
 import json
 import random
+import uuid
 from azure.eventhub import EventHubProducerClient, EventData
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -22,9 +23,10 @@ producer = EventHubProducerClient.from_connection_string(
 
 def generate_plc_event():
     return {
+        "id": str(uuid.uuid4()),
         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ'),
         "facility_id": f"FAC_{random.choice(['DE','US','CN'])}_{random.randint(1,12):02}",
-        "controller_id": f"CTRL{random.randint(1,20)}",
+        "plcId": f"PLC_{random.randint(1,20)}",
         "equipment_type": random.choice(["ROBOT", "CONVEYOR", "PRESS", "PAINT"]),
         "input_registers": [random.randint(0, 1) for _ in range(8)],
         "output_registers": [random.randint(0, 1) for _ in range(8)],

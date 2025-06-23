@@ -2,6 +2,7 @@ import os
 import time
 import json
 import random
+import uuid
 from azure.eventhub import EventHubProducerClient, EventData
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -22,7 +23,9 @@ producer = EventHubProducerClient.from_connection_string(
 
 def generate_scada_event():
     return {
+        "id": str(uuid.uuid4()),
         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "MachineID": f"SCADA_{random.randint(1, 100)}",
         "facility_id": f"FAC_{random.choice(['DE','US','CN'])}_{random.randint(1,12):02}",
         "production_line_id": f"PL{random.randint(1,10)}",
         "equipment_tag": f"EQ{random.randint(100,999)}",

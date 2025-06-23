@@ -2,6 +2,7 @@ import os
 import time
 import json
 import random
+import uuid
 from azure.eventhub import EventHubProducerClient, EventData
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -22,8 +23,9 @@ producer = EventHubProducerClient.from_connection_string(
 
 def generate_gps_event():
     return {
+        "id": str(uuid.uuid4()),
         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ'),
-        "vehicle_id": f"VEH{random.randint(1000,9999)}",
+        "deviceId": f"DEV_{random.randint(1000,9999)}",
         "facility_origin": f"FAC_{random.choice(['DE','US','CN'])}_{random.randint(1,12):02}",
         "facility_destination": f"FAC_{random.choice(['DE','US','CN'])}_{random.randint(1,12):02}",
         "latitude": round(random.uniform(-90, 90), 6),
