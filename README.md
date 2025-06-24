@@ -230,13 +230,3 @@ With the foundational data pipeline and initial dashboard in place, the next pha
 - Java/Scala Flink development requires a local JDK (and Scala for Scala jobs). PyFlink only requires Python, but with noted limitations.
 - Flink integration will be developed in a new branch for clean iteration and review.
 
----
-
-## Today's Work Summary (2025-06-24)
-- Unified and robust composite index creation for Cosmos DB containers (SCADA, PLC, GPS).
-- Refactored all simulators for best-practice signal handling and shutdown.
-- Enhanced `run_simulation.py` for aggressive process cleanup on Windows.
-- Documented all platform limitations and troubleshooting steps.
-- Ready to merge this branch. Flink work will begin in a new branch.
-
----
