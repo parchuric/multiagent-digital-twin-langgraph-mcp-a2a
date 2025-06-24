@@ -3,9 +3,16 @@ import time
 import json
 import random
 import uuid
+import signal
+import sys
 from azure.eventhub import EventHubProducerClient, EventData
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+from dotenv import load_dotenv
+
+# Always load .env from project root
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+load_dotenv(dotenv_path=os.path.join(root_dir, '.env'))
 
 # Fetch secrets from Azure Key Vault
 KEY_VAULT_URI = os.getenv("KEY_VAULT_URI", "https://idtwin-dev-kv.vault.azure.net/")
@@ -22,9 +29,10 @@ producer = EventHubProducerClient.from_connection_string(
 )
 
 def generate_gps_event():
+    # Always use current UTC time for timestamp in ISO 8601 format
     return {
         "id": str(uuid.uuid4()),
-        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         "deviceId": f"DEV_{random.randint(1000,9999)}",
         "facility_origin": f"FAC_{random.choice(['DE','US','CN'])}_{random.randint(1,12):02}",
         "facility_destination": f"FAC_{random.choice(['DE','US','CN'])}_{random.randint(1,12):02}",
@@ -46,14 +54,29 @@ def generate_gps_event():
 
 def main():
     print(f"Sending GPS events to {EVENT_HUB_NAME} at {EVENT_RATE} events/sec...")
-    while True:
-        batch = []
-        for _ in range(EVENT_RATE):
-            event = generate_gps_event()
-            batch.append(EventData(json.dumps(event)))
+    running = True
+    def handle_signal(signum, frame):
+        nonlocal running
+        print(f"\nReceived signal {signum}, shutting down...")
+        running = False
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+    try:
         with producer:
-            producer.send_batch(batch)
-        time.sleep(1)
+            while running:
+                batch = []
+                for _ in range(EVENT_RATE):
+                    event = generate_gps_event()
+                    batch.append(EventData(json.dumps(event)))
+                producer.send_batch(batch)
+                # Use shorter sleep for more responsive shutdown
+                for _ in range(10):
+                    if not running:
+                        break
+                    time.sleep(0.1)
+    finally:
+        print("Simulator stopped.")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

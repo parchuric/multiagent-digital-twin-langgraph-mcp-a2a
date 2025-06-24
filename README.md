@@ -144,29 +144,99 @@ The easiest way to run the platform is using the `run_simulation.py` script, whi
     ```
 3.  **To stop the simulation**, press `Ctrl+C`.
 
-## Project Structure
+### 5. Running the Simulation
 
-- `.github/`: GitHub-specific files, including Copilot instructions.
-- `agents/`: Future home for the multi-agent system.
-- `dashboard/`: Future home for the web UI dashboard.
-- `simulators/`: Contains all Python scripts for data simulation (`*_simulator.py`), stream processing (`event_stream_processor.py`), and the runner script (`run_simulation.py`).
-- `terraform/`: Contains all Terraform code, organized by `modules` and `environments`.
-- `PROJECT-DECISIONS.md`: A log of key architectural and technical decisions.
-- `PROJECT-VISION.md`: The high-level vision and goals for the platform.
+To see the full pipeline in action, you need to run a simulator and the event stream processor concurrently. The provided `run_simulation.py` script handles this for you.
+
+1.  **Ensure you are in the `simulators` directory with your virtual environment active.**
+
+2.  **Run the script:**
+    Choose a simulator to run (`scada`, `plc`, or `gps`).
+
+    ```sh
+    # Example: Run the SCADA simulator and its corresponding processor
+    python run_simulation.py --simulator scada
+    ```
+
+    You will see interleaved output from both the simulator sending events and the processor receiving them and writing them to Cosmos DB.
+
+### 6. Running the Dashboard (New!)
+
+The project includes a simple Flask-based web dashboard to visualize the data being ingested into Cosmos DB in real-time.
+
+1.  **Open a new terminal.**
+
+2.  **Navigate to the `dashboard` directory:**
+    ```sh
+    cd ../dashboard 
+    ```
+    *(Note: If you are in the `simulators` directory, navigate back to the root and then into `dashboard`)*
+
+3.  **Create and activate a Python virtual environment (can be separate from the simulators'):**
+    ```powershell
+    # For Windows
+    python -m venv .venv
+    .venv\Scripts\Activate
+    ```
+    ```sh
+    # For macOS/Linux
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+4.  **Install dependencies:**
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+5.  **Run the Flask application:**
+    ```sh
+    python app.py
+    ```
+
+6.  **View the dashboard:**
+    Open your web browser and navigate to `http://127.0.0.1:5001`.
+
+    The dashboard will automatically fetch and display the latest events from the SCADA container in Cosmos DB every 5 seconds. For the dashboard to display data, the `scada` simulator and processor must have been run at least once.
+
+## Project Decisions
+
+Major architectural decisions, troubleshooting steps, and operational workflows are documented in `PROJECT-DECISIONS.md`. This file is essential reading for understanding the "why" behind the technical implementation.
 
 ## Next Steps
 
-With the core infrastructure and data pipeline operational, the project is moving into its next phase:
+With the foundational data pipeline and initial dashboard in place, the next phases of the project will focus on:
 
-1.  **Real-Time Dashboard:** Develop a web-based dashboard in the `/dashboard` directory to visualize the incoming data from Cosmos DB.
-2.  **Data Query API:** Create a secure API to allow the dashboard and other services to query the historical data stored in Cosmos DB.
-3.  **Intelligent Agent Framework:** Begin development of the first intelligent agent in the `/agents` directory, which will perform analysis or anomaly detection on a data stream.
+1.  **Data Query API:** Develop a more sophisticated API to allow for querying and filtering data from Cosmos DB.
+2.  **Agent Framework:** Begin development of the multi-agent system in the `/agents` directory.
+3.  **Advanced Visualization:** Enhance the dashboard with more complex visualizations, such as time-series charts and geographical maps for GPS data.
 
-## Troubleshooting
+---
 
-- **`FileNotFoundError`:** Ensure you are running Python scripts from the correct directory (usually the `simulators` directory). The `run_simulation.py` script is the recommended entry point.
-- **Authentication/Authorization Errors:**
-    - Double-check that you are logged in with `az login`.
-    - Verify that the RBAC permissions have been assigned correctly and have had time to propagate (can take a few minutes).
-    - Make sure your IP address is added to the Key Vault and Cosmos DB firewalls.
-- For a detailed log of design choices and troubleshooting steps, see `PROJECT-DECISIONS.md`.
+## Platform Limitations: Process Management on Windows
+
+> **Note:** On Windows, Python's signal and process management is limited. Even with robust signal handling and aggressive use of `taskkill`, simulator and processor subprocesses may persist after pressing Ctrl+C. If this occurs:
+>
+> - Open Task Manager and manually end any remaining `python.exe` processes related to your simulation.
+> - For a more reliable developer experience, consider running the platform in WSL (Windows Subsystem for Linux) or a Linux VM/container.
+> - This is a known limitation of Python and the Windows platform, not a project bug.
+
+---
+
+## Flink Integration: Java/Scala vs PyFlink
+
+- **Flink jobs will be developed in Java/Scala for maximum performance, feature parity, and community support.**
+- PyFlink is suitable for prototyping and simple pipelines, but not for advanced or production workloads.
+- Java/Scala Flink development requires a local JDK (and Scala for Scala jobs). PyFlink only requires Python, but with noted limitations.
+- Flink integration will be developed in a new branch for clean iteration and review.
+
+---
+
+## Today's Work Summary (2025-06-24)
+- Unified and robust composite index creation for Cosmos DB containers (SCADA, PLC, GPS).
+- Refactored all simulators for best-practice signal handling and shutdown.
+- Enhanced `run_simulation.py` for aggressive process cleanup on Windows.
+- Documented all platform limitations and troubleshooting steps.
+- Ready to merge this branch. Flink work will begin in a new branch.
+
+---

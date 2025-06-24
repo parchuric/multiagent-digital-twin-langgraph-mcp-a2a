@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Industrial Digital Twin - Real-Time Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 20px; }
+        h1 { text-align: center; color: #1a237e; }
+        #status-indicators { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; }
+        .status-box { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); padding: 12px 24px; text-align: center; }
+        .status-label { font-weight: bold; color: #1a237e; }
+        .status-value { font-size: 1.5em; color: #d32f2f; }
+        #events-container { max-width: 1200px; margin: 20px auto; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; }
+        pre { background-color: #2d2d2d; color: #f2f2f2; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; }
+        .event { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
+        .event:last-child { border-bottom: none; }
+        #map { height: 350px; width: 100%; margin: 0 auto 20px auto; border-radius: 8px; display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Real-Time Event Stream Dashboard</h1>
+
+    <div id="status-indicators">
+        <div class="status-box">
+            <div class="status-label">SCADA Errors/Status</div>
+            <div class="status-value" id="scada-status">-</div>
+        </div>
+        <div class="status-box">
+            <div class="status-label">PLC Errors/Status</div>
+            <div class="status-value" id="plc-status">-</div>
+        </div>
+        <div class="status-box">
+            <div class="status-label">GPS Errors/Status</div>
+            <div class="status-value" id="gps-status">-</div>
+        </div>
+    </div>
+
+    <div style="text-align:center; margin-bottom:20px;">
+        <label for="streamType" style="font-weight:bold;">Select Stream Type:</label>
+        <select id="streamType" style="font-size:1em; padding:4px 8px;">
+            <option value="scada">SCADA</option>
+            <option value="plc">PLC</option>
+            <option value="gps">GPS</option>
+        </select>
+        <label for="timeRange" style="margin-left:20px; font-weight:bold;">Time Range:</label>
+        <select id="timeRange" style="font-size:1em; padding:4px 8px;">
+            <option value="5">Last 5 min</option>
+            <option value="15">Last 15 min</option>
+            <option value="60">Last 1 hour</option>
+            <option value="all">All</option>
+        </select>
+    </div>
+
+    <div id="map"></div>
+    <div id="chart-container" style="max-width:1200px; margin:0 auto 20px auto;"></div>
+    <div id="events-container">
+        <p>Loading events...</p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        let currentStreamType = 'scada';
+        let currentTimeRange = '5';
+        const streamTypeSelect = document.getElementById('streamType');
+        const timeRangeSelect = document.getElementById('timeRange');
+        let chart = null;
+        let map = null;
+        let markers = [];
+
+        async function fetchStatusIndicators() {
+            try {
+                const response = await fetch('/api/events_status');
+                const status = await response.json();
+                document.getElementById('scada-status').textContent = status.scada ?? '-';
+                document.getElementById('plc-status').textContent = status.plc ?? '-';
+                document.getElementById('gps-status').textContent = status.gps ?? '-';
+            } catch (e) {
+                document.getElementById('scada-status').textContent = '-';
+                document.getElementById('plc-status').textContent = '-';
+                document.getElementById('gps-status').textContent = '-';
+            }
+        }
+
+        async function fetchGpsMap() {
+            const mapDiv = document.getElementById('map');
+            if (currentStreamType !== 'gps') {
+                mapDiv.style.display = 'none';
+                if (map) map.remove();
+                return;
+            }
+            mapDiv.style.display = 'block';
+            if (!map) {
+                map = L.map('map').setView([37.0902, -95.7129], 4); // Center on US
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+            }
+            // Remove old markers
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            try {
+                const response = await fetch('/api/gps_map');
+                const gpsData = await response.json();
+                gpsData.forEach(device => {
+                    if (device.latitude && device.longitude) {
+                        // Color marker based on geofence_violations
+                        let markerColor = device.geofence_violations > 0 ? 'red' : 'green';
+                        const marker = L.circleMarker([device.latitude, device.longitude], {
+                            color: markerColor,
+                            radius: 8,
+                            fillOpacity: 0.8
+                        }).addTo(map);
+                        marker.bindPopup(
+                            `<b>Device:</b> ${device.deviceId}<br>` +
+                            `<b>Timestamp:</b> ${device.timestamp || ''}<br>` +
+                            `<b>Speed:</b> ${device.speed || ''} km/h<br>` +
+                            `<b>Altitude:</b> ${device.altitude || ''} m<br>` +
+                            `<b>Heading:</b> ${device.heading || ''}°<br>` +
+                            `<b>Delivery Status:</b> ${device.delivery_status || ''}<br>` +
+                            `<b>Geofence Violations:</b> ${device.geofence_violations || 0}`
+                        );
+                        markers.push(marker);
+                    }
+                });
+                if (gpsData.length > 0) {
+                    const first = gpsData[0];
+                    map.setView([first.latitude, first.longitude], 10);
+                }
+            } catch (e) {
+                // Ignore map errors
+            }
+        }
+
+        async function fetchEvents() {
+            // Save scroll position
+            const scrollY = window.scrollY;
+            try {
+                let url = `/api/events/${currentStreamType}`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                let events = await response.json();
+                const container = document.getElementById('events-container');
+                container.innerHTML = '';
+
+                // Filter by time range if not 'all'
+                if (currentTimeRange !== 'all') {
+                    const now = new Date();
+                    const minTime = new Date(now.getTime() - parseInt(currentTimeRange) * 60000);
+                    events = events.filter(ev => {
+                        // Accept event if timestamp is missing or invalid (show it)
+                        if (!ev.timestamp || isNaN(Date.parse(ev.timestamp))) return true;
+                        const t = new Date(ev.timestamp);
+                        return t >= minTime;
+                    });
+                }
+
+                if (events.error) {
+                    container.innerHTML = `<p>Error loading events: ${events.error}</p>`;
+                    return;
+                }
+
+                if (events.length === 0) {
+                    container.innerHTML = '<p>No events found.</p>';
+                    if (chart) chart.destroy();
+                    document.getElementById('chart-container').innerHTML = '';
+                    return;
+                }
+
+                // Show chart for numeric fields
+                renderChart(events);
+
+                events.forEach(event => {
+                    const eventElement = document.createElement('div');
+                    eventElement.className = 'event';
+                    const eventJson = JSON.stringify(event, null, 2);
+                    eventElement.innerHTML = `<pre>${eventJson}</pre>`;
+                    container.appendChild(eventElement);
+                });
+
+            } catch (error) {
+                const container = document.getElementById('events-container');
+                container.innerHTML = `<p>Failed to fetch events. Is the Flask server running? Is the simulator sending data? Error: ${error.message}</p>`;
+                console.error('Error fetching events:', error);
+            } finally {
+                // Restore scroll position
+                window.scrollTo({ top: scrollY, behavior: 'auto' });
+            }
+        }
+
+        function renderChart(events) {
+            const chartContainer = document.getElementById('chart-container');
+            chartContainer.innerHTML = '<canvas id="eventChart" height="80"></canvas>';
+            const ctx = document.getElementById('eventChart').getContext('2d');
+            // Pick a field to chart based on stream type
+            let label = '', data = [], labels = [];
+            if (currentStreamType === 'scada') {
+                label = 'temperature';
+                data = events.map(e => e.temperature);
+                labels = events.map(e => e.timestamp || '');
+            } else if (currentStreamType === 'plc') {
+                label = 'cycle_time';
+                data = events.map(e => e.cycle_time);
+                labels = events.map(e => e.timestamp || '');
+            } else if (currentStreamType === 'gps') {
+                label = 'speed';
+                data = events.map(e => e.speed);
+                labels = events.map(e => e.timestamp || '');
+            }
+            if (chart) chart.destroy();
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        borderColor: '#1a237e',
+                        backgroundColor: 'rgba(26,35,126,0.1)',
+                        fill: true,
+                        tension: 0.2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        streamTypeSelect.addEventListener('change', function() {
+            currentStreamType = this.value;
+            fetchEvents();
+            fetchGpsMap();
+        });
+        timeRangeSelect.addEventListener('change', function() {
+            currentTimeRange = this.value;
+            fetchEvents();
+        });
+
+        setInterval(fetchEvents, 5000);
+        setInterval(fetchStatusIndicators, 10000);
+        setInterval(fetchGpsMap, 10000);
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchEvents();
+            fetchStatusIndicators();
+            fetchGpsMap();
+        });
+    </script>
+
+</body>
+</html>

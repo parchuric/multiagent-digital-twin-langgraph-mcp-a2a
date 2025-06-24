@@ -10,6 +10,8 @@ PROJECT-DECISIONS.md
 PROJECT-VISION.md
 industrial_architecture_diagram.html
 industrial_architecture_diagram.png
+cosmos-data-contributor-role.json
+cosmos-data-contributor-role.json.bak
 
 # Ignore Terraform state, cache, and provider binaries
 terraform/**/*.tfstate
@@ -26,3 +28,6 @@ __pycache__/
 
 # Ignore VSCode settings
 .vscode/
+
+# Ignore scripts directory
+scripts/

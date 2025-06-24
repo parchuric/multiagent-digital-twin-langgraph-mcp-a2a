@@ -6,6 +6,11 @@ import uuid
 from azure.eventhub import EventHubProducerClient, EventData
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+from dotenv import load_dotenv
+
+# Always load .env from project root
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+load_dotenv(dotenv_path=os.path.join(root_dir, '.env'))
 
 # Fetch secrets from Azure Key Vault
 KEY_VAULT_URI = os.getenv("KEY_VAULT_URI", "https://idtwin-dev-kv.vault.azure.net/")
@@ -44,7 +49,16 @@ def generate_scada_event():
 
 def main():
     print(f"Sending SCADA events to {EVENT_HUB_NAME} at {EVENT_RATE} events/sec...")
-    while True:
+    running = True
+    def handle_signal(signum, frame):
+        nonlocal running
+        print(f"\nReceived signal {signum}, shutting down...")
+        running = False
+    import signal
+    import sys
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+    while running:
         batch = []
         for _ in range(EVENT_RATE):
             event = generate_scada_event()
@@ -52,6 +66,8 @@ def main():
         with producer:
             producer.send_batch(batch)
         time.sleep(1)
+    print("Simulator stopped.")
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

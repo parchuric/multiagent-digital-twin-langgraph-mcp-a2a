@@ -4,6 +4,8 @@ import sys
 import time
 import os
 import threading
+import signal
+import platform
 
 
 def stream_reader(stream, label):
@@ -65,6 +67,9 @@ def main():
     print(f"  -> Processor: {processor_script}")
     print("\nPress Ctrl+C to stop both processes.")
 
+    simulator_process = None
+    processor_process = None
+
     # The processor no longer uses an environment variable.
     # The stream_type is passed as a command-line argument.
 
@@ -73,6 +78,10 @@ def main():
         # that is running this script. This is important for virtual environments.
         python_executable = sys.executable
 
+        creationflags = 0
+        if platform.system() == "Windows":
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+
         # Launch the processor first, passing the stream type as an argument
         # Use the -u flag for unbuffered output, ensuring we see logs in real-time.
         # Redirect stderr to stdout to prevent I/O deadlocks.
@@ -80,8 +89,11 @@ def main():
             [python_executable, "-u", processor_script, "--stream-type", stream_type],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            start_new_session=(platform.system() != "Windows"),
+            creationflags=creationflags
         )
+        print(f"[INFO] Processor PID: {processor_process.pid}")
 
         # Wait for the processor to signal that it's ready
         print("Waiting for the event stream processor to initialize...")
@@ -111,8 +123,11 @@ def main():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=os.environ # The simulator doesn't need the STREAM_TYPE env var
+            env=os.environ,
+            start_new_session=(platform.system() != "Windows"),
+            creationflags=creationflags
         )
+        print(f"[INFO] Simulator PID: {simulator_process.pid}")
 
         # --- Monitor processes using non-blocking threads ---
         labels = {
@@ -160,27 +175,61 @@ def main():
 
     except KeyboardInterrupt:
         print("\nCtrl+C received. Terminating processes...")
-        simulator_process.terminate()
-        processor_process.terminate()
-        # Wait for processes to terminate
-        sim_rc = simulator_process.wait()
-        proc_rc = processor_process.wait()
-        print(f"Simulator terminated with return code: {sim_rc}")
-        print(f"Processor terminated with return code: {proc_rc}")
+        killed = False
+        procs = [simulator_process, processor_process]
+        if platform.system() == "Windows":
+            import getpass
+            user = getpass.getuser()
+            for proc in procs:
+                if proc and proc.poll() is None:
+                    try:
+                        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)])
+                        print(f"Process {proc.pid} forcefully killed with taskkill.")
+                    except Exception as e:
+                        print(f"taskkill failed: {e}")
+            # As a last resort, kill all python.exe processes for this user started in the last 10 minutes
+            print("[INFO] Attempting to kill any remaining python.exe processes for this user...")
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/FI", f"USERNAME eq {user}"])
+            except Exception as e:
+                print(f"Final taskkill failed: {e}")
+            killed = True
+        else:
+            for proc in procs:
+                if proc and proc.poll() is None:
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    except Exception:
+                        try:
+                            proc.terminate()
+                        except Exception:
+                            pass
+            if simulator_process:
+                sim_rc = simulator_process.wait()
+                print(f"Simulator terminated with return code: {sim_rc}")
+            if processor_process:
+                proc_rc = processor_process.wait()
+                print(f"Processor terminated with return code: {proc_rc}")
+        if killed:
+            print("All processes forcefully killed.")
         print("Simulation stopped.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         # Ensure processes are cleaned up
-        if 'simulator_process' in locals() and simulator_process.poll() is None:
-            simulator_process.terminate()
-        if 'processor_process' in locals() and processor_process.poll() is None:
-            processor_process.terminate()
+        for proc in [simulator_process, processor_process]:
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
     finally:
         # Final check to ensure processes are terminated
-        if 'simulator_process' in locals() and simulator_process.poll() is None:
-            simulator_process.kill()
-        if 'processor_process' in locals() and processor_process.poll() is None:
-            processor_process.kill()
+        for proc in [simulator_process, processor_process]:
+            if proc and proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

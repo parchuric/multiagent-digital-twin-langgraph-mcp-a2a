@@ -1,8 +1,16 @@
 import os
+from dotenv import load_dotenv
+# Always load .env from project root before anything else
+def _load_root_env():
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    load_dotenv(dotenv_path=os.path.join(root_dir, '.env'), override=True)
+_load_root_env()
+
 import json
 import asyncio
 import argparse
-from dotenv import load_dotenv
+import signal
+import sys
 from azure.eventhub.aio import EventHubConsumerClient
 from azure.cosmos.aio import CosmosClient
 from azure.cosmos import PartitionKey
@@ -78,9 +86,6 @@ async def on_event(partition_context, event, cosmos_container_client):
 async def main(stream_type):
     """Main function to set up and run the event stream processor."""
     # --- 1. Load Environment Variables ---
-    dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
-    load_dotenv(dotenv_path=dotenv_path)
-
     key_vault_uri = os.getenv("KEY_VAULT_URI")
     subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
     resource_group_name = os.getenv("AZURE_RESOURCE_GROUP_NAME")
@@ -162,6 +167,74 @@ async def main(stream_type):
         # It's important to close the management client after use.
         await management_client.close()
 
+    # --- 4b. Ensure Composite Index for All Streams ---
+    # Define composite index requirements for each stream type
+    composite_index_map = {
+        "scada": [
+            {"path": "/MachineID", "order": "ascending"},
+            {"path": "/_ts", "order": "descending"}
+        ],
+        "plc": [
+            {"path": "/plcId", "order": "ascending"},
+            {"path": "/_ts", "order": "descending"}
+        ],
+        "gps": [
+            {"path": "/deviceId", "order": "ascending"},
+            {"path": "/_ts", "order": "descending"}
+        ]
+    }
+    if stream_type in composite_index_map:
+        try:
+            print(f"Ensuring composite index for {cosmos_container_name} container...")
+            # Re-open management client for this operation (ensure context is valid)
+            credential2 = DefaultAzureCredential()
+            management_client2 = CosmosDBManagementClient(credential2, subscription_id)
+            container = await management_client2.sql_resources.get_sql_container(
+                resource_group_name=resource_group_name,
+                account_name=cosmos_db_account_name,
+                database_name=cosmos_database_name,
+                container_name=cosmos_container_name
+            )
+            policy = container.resource.indexing_policy
+            composite_needed = composite_index_map[stream_type]
+            found = False
+            for comp in getattr(policy, 'composite_indexes', []) or []:
+                if (len(comp) == 2 and
+                    comp[0].path == composite_needed[0]["path"] and comp[0].order == composite_needed[0]["order"] and
+                    comp[1].path == composite_needed[1]["path"] and comp[1].order == composite_needed[1]["order"]):
+                    found = True
+                    break
+            if not found:
+                print(f"Adding composite index for {composite_needed[0]['path']} ASC, {composite_needed[1]['path']} DESC...")
+                if not policy.composite_indexes:
+                    policy.composite_indexes = []
+                # Use the same type as existing composite index objects if present, else fallback to dict
+                comp_type = type(comp[0]) if (getattr(policy, 'composite_indexes', []) and len(policy.composite_indexes) > 0 and len(policy.composite_indexes[0]) > 0) else dict
+                policy.composite_indexes.append([
+                    comp_type(path=composite_needed[0]["path"], order=composite_needed[0]["order"]),
+                    comp_type(path=composite_needed[1]["path"], order=composite_needed[1]["order"])
+                ])
+                await management_client2.sql_resources.begin_create_update_sql_container(
+                    resource_group_name=resource_group_name,
+                    account_name=cosmos_db_account_name,
+                    database_name=cosmos_database_name,
+                    container_name=cosmos_container_name,
+                    create_update_sql_container_parameters=SqlContainerCreateUpdateParameters(
+                        resource=SqlContainerResource(
+                            id=cosmos_container_name,
+                            partition_key=ContainerPartitionKey(paths=[cosmos_partition_key_path], kind="Hash"),
+                            indexing_policy=policy
+                        )
+                    )
+                )
+                print("Composite index added.")
+            else:
+                print("Composite index already present.")
+            await management_client2.close()
+            await credential2.close()
+        except Exception as e:
+            print(f"Error ensuring composite index for {cosmos_container_name}: {e}")
+
     # --- 5. Get Data Plane Client for the Container ---
     try:
         database_client = cosmos_client.get_database_client(cosmos_database_name)
@@ -186,6 +259,14 @@ async def main(stream_type):
     print(f"Starting processor for '{stream_type}' stream. Listening for events on Event Hub: '{event_hub_name}'...")
     print("PROCESSOR_READY", flush=True)
     
+    running = True
+    def handle_signal(signum, frame):
+        nonlocal running
+        print(f"\nReceived signal {signum}, shutting down event stream processor...")
+        running = False
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
     try:
         async with consumer_client:
             await consumer_client.receive(
@@ -201,6 +282,12 @@ async def main(stream_type):
         await secret_client.close()
         await cosmos_client.close()
         await credential.close()
+
+    # Replace the main event loop with a check for running
+    while running:
+        await asyncio.sleep(1)
+    print("Event stream processor stopped.")
+    sys.exit(0)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generic Event Stream Processor for Azure.")
