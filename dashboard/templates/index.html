@@ -17,6 +17,23 @@
         .event { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
         .event:last-child { border-bottom: none; }
         #map { height: 350px; width: 100%; margin: 0 auto 20px auto; border-radius: 8px; display: none; }
+        .stream-tile {
+            background: #fff;
+            border: 2px solid #1a237e;
+            color: #1a237e;
+            border-radius: 8px;
+            padding: 10px 28px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s, border 0.2s;
+        }
+        .stream-tile.selected, .stream-tile:focus {
+            background: #1a237e;
+            color: #fff;
+            border: 2px solid #3949ab;
+            outline: none;
+        }
     </style>
 </head>
 <body>
@@ -39,12 +56,12 @@
     </div>
 
     <div style="text-align:center; margin-bottom:20px;">
-        <label for="streamType" style="font-weight:bold;">Select Stream Type:</label>
-        <select id="streamType" style="font-size:1em; padding:4px 8px;">
-            <option value="scada">SCADA</option>
-            <option value="plc">PLC</option>
-            <option value="gps">GPS</option>
-        </select>
+        <label style="font-weight:bold; margin-right:10px;">Select Stream Type:</label>
+        <div id="streamTypeTiles" style="display:inline-flex; gap:16px; vertical-align:middle;">
+            <button type="button" class="stream-tile" data-stream="scada">SCADA</button>
+            <button type="button" class="stream-tile" data-stream="plc">PLC</button>
+            <button type="button" class="stream-tile" data-stream="gps">GPS</button>
+        </div>
         <label for="timeRange" style="margin-left:20px; font-weight:bold;">Time Range:</label>
         <select id="timeRange" style="font-size:1em; padding:4px 8px;">
             <option value="5">Last 5 min</option>
@@ -239,11 +256,33 @@
             });
         }
 
-        streamTypeSelect.addEventListener('change', function() {
-            currentStreamType = this.value;
-            fetchEvents();
-            fetchGpsMap();
+        // Remove the old select element for streamType
+        document.addEventListener('DOMContentLoaded', function() {
+            const oldSelect = document.getElementById('streamType');
+            if (oldSelect) oldSelect.style.display = 'none';
+            // Tile selection logic
+            const tiles = document.querySelectorAll('.stream-tile');
+            function updateTileSelection(selected) {
+                tiles.forEach(tile => {
+                    if (tile.dataset.stream === selected) {
+                        tile.classList.add('selected');
+                    } else {
+                        tile.classList.remove('selected');
+                    }
+                });
+            }
+            tiles.forEach(tile => {
+                tile.addEventListener('click', function() {
+                    currentStreamType = this.dataset.stream;
+                    updateTileSelection(currentStreamType);
+                    fetchEvents();
+                    fetchGpsMap();
+                });
+            });
+            // Set initial selection
+            updateTileSelection(currentStreamType);
         });
+
         timeRangeSelect.addEventListener('change', function() {
             currentTimeRange = this.value;
             fetchEvents();

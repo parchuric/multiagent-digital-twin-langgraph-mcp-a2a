@@ -4,6 +4,7 @@ import os
 from azure.cosmos import CosmosClient
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 # Always load .env from project root
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -40,10 +41,27 @@ def get_events_by_type(stream_type):
         query = "SELECT * FROM c ORDER BY c._ts DESC OFFSET 0 LIMIT 100"
         items = list(container.query_items(query, enable_cross_partition_query=True))
         print(f"[DEBUG] Retrieved {len(items)} events from Cosmos DB container '{container_name}'")
+        # Ensure each event has a valid ISO 8601 timestamp
+        for item in items:
+            # If 'timestamp' exists and is valid, leave as is
+            ts = item.get('timestamp')
+            if not ts or not _is_valid_iso8601(ts):
+                # Use Cosmos DB _ts (epoch seconds) if available
+                if '_ts' in item:
+                    item['timestamp'] = datetime.fromtimestamp(item['_ts'], tz=timezone.utc).isoformat()
+                else:
+                    item['timestamp'] = datetime.now(timezone.utc).isoformat()
         return jsonify(items)
     except Exception as e:
         print(f"[ERROR] Exception in /api/events/{stream_type}: {e}")
         return jsonify({"error": str(e)}), 500
+
+def _is_valid_iso8601(ts):
+    try:
+        datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        return True
+    except Exception:
+        return False
 
 @app.route('/api/gps_map')
 def get_gps_map():
