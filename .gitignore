@@ -26,6 +26,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Ignore Flink Java build output
+flink-java/target/
+
 # Ignore VSCode settings
 .vscode/
 
