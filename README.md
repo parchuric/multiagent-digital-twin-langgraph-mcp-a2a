@@ -98,20 +98,17 @@ The application uses `DefaultAzureCredential` for secure, passwordless access to
 
     # Set your resource names (these are the defaults from Terraform)
     KEY_VAULT_NAME="idtwin-dev-kv"
-    COSMOS_ACCOUNT_NAME="idtwin-dev-cosmos"
-    RESOURCE_GROUP_NAME="idtwin-dev-rg"
-    EVENT_HUB_NAMESPACE="idtwin-dev-eh-ns"
-    SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-    
-    # 1. Grant access to Key Vault secrets
-    az keyvault set-policy --name $KEY_VAULT_NAME --object-id $PRINCIPAL_ID --secret-permissions get list
+    EVENT_HUBS_NAMESPACE="idtwin-dev-ehns"
+    COSMOS_DB_ACCOUNT="idtwin-dev-cosmos"
 
-    # 2. Grant access to Cosmos DB (Data and Control Plane)
-    az cosmosdb sql role assignment create --account-name $COSMOS_ACCOUNT_NAME --resource-group $RESOURCE_GROUP_NAME --role-definition-name "Cosmos DB Built-in Data Contributor" --principal-id $PRINCIPAL_ID --scope "/"
-    az cosmosdb sql role assignment create --account-name $COSMOS_ACCOUNT_NAME --resource-group $RESOURCE_GROUP_NAME --role-definition-name "Cosmos DB Operator" --principal-id $PRINCIPAL_ID --scope "/"
+    # Grant Key Vault access
+    az keyvault secret set-permission --name $KEY_VAULT_NAME --object-id $PRINCIPAL_ID --permissions get list
 
-    # 3. Grant access to Event Hubs
-    az role assignment create --assignee $PRINCIPAL_ID --role "Azure Event Hubs Data Owner" --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.EventHub/namespaces/$EVENT_HUB_NAMESPACE"
+    # Grant Event Hubs data access
+    az role assignment create --role "Azure Event Hubs Data Owner" --assignee $PRINCIPAL_ID --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/idtwin-dev-rg/providers/Microsoft.EventHub/namespaces/$EVENT_HUBS_NAMESPACE"
+
+    # Grant Cosmos DB data access (Contributor is needed for programmatic resource creation)
+    az role assignment create --role "Contributor" --assignee $PRINCIPAL_ID --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/idtwin-dev-rg/providers/Microsoft.DocumentDB/databaseAccounts/$COSMOS_DB_ACCOUNT"
     ```
 
 3.  **Configure Firewalls:**
@@ -123,93 +120,213 @@ The easiest way to run the platform is using the `run_simulation.py` script, whi
 
 1.  **Ensure your virtual environment is active** and you are in the `simulators` directory.
 2.  **Run the simulation:**
-    Choose a stream type (`scada`, `plc`, or `gps`) and run the script.
+    You can run all simulators in parallel, or specify a stream type (`scada`, `plc`, or `gps`) to run only that simulator. For example:
 
     ```powershell
-    # Example: Run the SCADA simulation and processor
+    # Run all simulators in parallel
+    python run_simulation.py
+
+    # Run only the SCADA simulator
     python run_simulation.py scada
+
+    # Run only the PLC simulator
+    python run_simulation.py plc
+
+    # Run only the GPS simulator
+    python run_simulation.py gps
     ```
-    You will see interleaved output from both the simulator and the processor, showing events being sent and received in real-time.
+    You will see interleaved output from all running simulators, showing events being sent in real-time.
 
+    To stop the simulation, press `Ctrl+C`.
+
+### Running Components Manually (Alternative)
+
+While `run_simulation.py` is the recommended way to run the platform for development, you can also run the stream processor and simulators manually in separate terminals. This can be useful for debugging individual components or for running only a subset of streams.
+
+#### 1. Run All Simulators in Parallel
+
+To launch all data simulators (SCADA, PLC, GPS) in parallel, use:
+
+```sh
+python run_simulation.py
+```
+
+This will start all three simulators as separate processes. Press `Ctrl+C` to stop all simulators at once. The script will handle graceful shutdown and process cleanup.
+
+#### 2. Run a Single Simulator and Processor Pair
+
+You can also run a single simulator and its corresponding processor for focused testing. For example, to run only the SCADA stream:
+
+```sh
+python run_simulation.py scada
+```
+
+Valid arguments are:
+- `scada` — runs only the SCADA simulator
+- `plc` — runs only the PLC simulator
+- `gps` — runs only the GPS simulator
+- No argument — runs all simulators in parallel
+
+#### 3. Run the Event Stream Processor (Python)
+
+The unified event stream processor can be run directly and requires the `--stream-type` argument to specify which stream to process. For example:
+
+```sh
+python event_stream_processor.py --stream-type scada
+```
+
+Valid arguments for `--stream-type` are:
+- `scada` — process SCADA events
+- `plc` — process PLC events
+- `gps` — process GPS events
+- (If supported) `all` — process all streams
+
+**Example: Run the SCADA processor and simulator in separate terminals:**
+
+Terminal 1:
+```sh
+python event_stream_processor.py --stream-type scada
+```
+
+Terminal 2:
+```sh
+python scada_simulator.py
+```
+
+**Example: Run all simulators and processors in parallel:**
+
+Terminal 1:
+```sh
+python run_simulation.py
+```
+
+Terminal 2 (optional, for a specific processor):
+```sh
+python event_stream_processor.py --stream-type scada
+```
+
+**Notes:**
+- The simulators and processor rely on the `.env` file for configuration (Key Vault URI, etc.) and use Azure AD to authenticate. Ensure you have logged in with `az login` and have the required permissions.
+- You can control the event rate for each simulator by setting the `SCADA_EVENT_RATE`, `PLC_EVENT_RATE`, or `GPS_EVENT_RATE` environment variables.
+- These simulators are for development and testing purposes only.
+
+## Advanced Stream Processing (Apache Flink)
+
+For more complex, stateful stream processing scenarios, this project includes a Maven-based Java application using Apache Flink. It processes the same event streams from Event Hubs (using its Kafka endpoint) and writes the results to Azure Cosmos DB, authenticating via Azure AD.
+
+### Flink Prerequisites
+
+Before you can build and run the Flink job, you will need the following installed on your system:
+
+1.  **Java Development Kit (JDK) 11:**
+    -   The project is standardized on the **Microsoft Build of OpenJDK 11**.
+    -   You can install it on Windows via `winget install Microsoft.OpenJDK.11` or download it from the official Microsoft site for other operating systems.
+    -   **Crucially**, you must set the `JAVA_HOME` environment variable to point to the JDK's installation directory.
+
+2.  **Apache Maven:**
+    -   A build automation tool used for Java projects.
+    -   You can download it from the [official Maven website](https://maven.apache.org/download.cgi).
+    -   Ensure the `mvn` command is available in your system's PATH.
+
+### Flink Configuration
+
+The Flink job is configured using environment variables defined in the `.env` file in the **project root directory**. Ensure the following variables are set correctly:
+
+```
+# Flink Job Configuration
+# Replace <YourEventHubsNamespace> with your actual Event Hubs Namespace
+KAFKA_BOOTSTRAP_SERVERS=<YourEventHubsNamespace>.servicebus.windows.net:9093
+FLINK_KAFKA_TOPICS=scada-production-hub,plc-control-hub,gps-logistics-hub
+
+# Cosmos DB Configuration (used by the Flink Job)
+COSMOS_DB_ENDPOINT=https://<YourCosmosDbAccount>.documents.azure.com:443/
+COSMOS_DB_DATABASE=industrial-digital-twin-db
+```
+
+**Authentication:** The job uses `DefaultAzureCredential` for authenticating to Cosmos DB, so no keys are needed in the `.env` file. Ensure you are logged in via the Azure CLI (`az login`) or have the appropriate service principal environment variables set for authentication to work.
+
+### Building the Flink Job
+
+To compile the Java source code and package it into a runnable JAR file, navigate to the `flink-java` directory and run the following Maven command:
+
+```sh
+# From the project root
+cd flink-java
+mvn clean package
+cd ..
+```
+
+This will create a JAR file in the `flink-java/target/` directory (e.g., `flink-java-1.0-SNAPSHOT.jar`).
+
+### Running the Flink Job
+
+Once the JAR file is built, you can submit it to a running Flink cluster. For local development, you can use a standalone Flink distribution.
+
+1.  **Download Apache Flink:** Download a stable Flink distribution (e.g., Flink 1.17 or later) from the [official Flink website](https://flink.apache.org/downloads/).
+
+2.  **Start a Local Flink Cluster:**
+    ```sh
+    # Navigate to your Flink distribution directory
+    # cd /path/to/flink-1.17.x
+
+    # Start the cluster
+    ./bin/start-cluster.sh
     ```
-    [PROCESSOR - SCADA]: Initializing processor for stream type: scada...
-    [PROCESSOR - SCADA]: PROCESSOR_READY: Now listening for events.
-    
-    Processor is ready. Starting the simulator.
-    
-    [SIMULATOR - SCADA]: Sending event: {"id": "...", "value": 101.5}
-    [PROCESSOR - SCADA]: Received event: {"id": "...", "value": 101.5}
-    [PROCESSOR - SCADA]: Successfully inserted event ... into Cosmos DB.
-    ...
-    ```
-3.  **To stop the simulation**, press `Ctrl+C`.
 
-### 5. Running the Simulation
-
-To see the full pipeline in action, you need to run a simulator and the event stream processor concurrently. The provided `run_simulation.py` script handles this for you.
-
-1.  **Ensure you are in the `simulators` directory with your virtual environment active.**
-
-2.  **Run the script:**
-    Choose a simulator to run (`scada`, `plc`, or `gps`).
+3.  **Submit the Job:**
+    From the Flink distribution directory, use the `flink run` command to submit your JAR. You will need to provide the absolute path to the JAR file created in the previous step.
 
     ```sh
-    # Example: Run the SCADA simulator and its corresponding processor
-    python run_simulation.py --simulator scada
+    # Example from within the Flink distribution directory
+    ./bin/flink run c:\Projects\GithubLocal\industrial-digital-twin-multiagent-platform\flink-java\target\flink-java-1.0-SNAPSHOT.jar
     ```
 
-    You will see interleaved output from both the simulator sending events and the processor receiving them and writing them to Cosmos DB.
+You can monitor the job's progress through the Flink Web UI, which is typically available at `http://localhost:8081`.
 
-### 6. Running the Dashboard (New!)
+## Project Structure
 
-The project includes a simple Flask-based web dashboard to visualize the data being ingested into Cosmos DB in real-time.
+```
+industrial-digital-twin-multiagent-platform/
+├── .github/                  # CI/CD workflows and GitHub Actions
+├── agents/                   # Python code for intelligent agents (in development)
+├── dashboard/                # Web-based UI for data visualization (in development)
+├── docs/                     # Project documentation and architecture diagrams
+├── flink-java/               # Maven project for the Flink Java stream processor
+│   ├── src/main/java/com/industrialdigitaltwin/flink/
+│   │   ├── StreamingJob.java         # Main Flink job (reference implementation)
+│   │   ├── ScadaEvent.java           # SCADA event POJO
+│   │   ├── GpsEvent.java             # GPS event POJO
+│   │   ├── PlcEvent.java             # PLC event POJO
+│   │   ├── EnrichedEvent.java        # Output of cross-stream join
+│   │   ├── MovingAverageAggregate.java # Windowed aggregation logic
+│   │   └── ...                       # Additional Flink utilities and classes
+│   ├── pom.xml                       # Maven build configuration
+│   └── ...
+├── simulators/                # Python scripts for data generation
+│   ├── scada_simulator.py     # SCADA event generator
+│   ├── plc_simulator.py       # PLC event generator
+│   ├── gps_simulator.py       # GPS event generator
+│   ├── run_simulation.py      # Orchestrates processor and simulator for dev
+│   ├── event_stream_processor.py # Unified Python stream processor
+│   ├── requirements.txt       # Python dependencies
+│   └── ...
+├── terraform/                 # Terraform modules for infrastructure-as-code
+│   ├── modules/               # Reusable infrastructure components
+│   └── environments/          # Environment-specific configs (dev, staging, prod)
+├── industrial_architecture_diagram.html # Interactive architecture diagram
+├── PROJECT-DECISIONS.md       # Log of key architectural and technical decisions
+├── README.md                  # This file
+└── ...                        # Other root-level files (e.g., .env.sample, .gitignore)
+```
 
-1.  **Open a new terminal.**
+- **Each major component is modularized for clarity and scalability.**
+- **Terraform** manages all Azure infrastructure, with clear separation between reusable modules and environment-specific settings.
+- **Simulators** and **stream processors** are decoupled, supporting both Python and Java (Flink) implementations.
+- **Documentation** is comprehensive, with all major decisions and troubleshooting steps logged for future reference.
 
-2.  **Navigate to the `dashboard` directory:**
-    ```sh
-    cd ../dashboard 
-    ```
-    *(Note: If you are in the `simulators` directory, navigate back to the root and then into `dashboard`)*
+## Contributing
 
-3.  **Create and activate a Python virtual environment (can be separate from the simulators'):**
-    ```powershell
-    # For Windows
-    python -m venv .venv
-    .venv\Scripts\Activate
-    ```
-    ```sh
-    # For macOS/Linux
-    python3 -m venv .venv
-    source .venv/bin/activate
-    ```
-
-4.  **Install dependencies:**
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-5.  **Run the Flask application:**
-    ```sh
-    python app.py
-    ```
-
-6.  **View the dashboard:**
-    Open your web browser and navigate to `http://127.0.0.1:5001`.
-
-    The dashboard will automatically fetch and display the latest events from the SCADA container in Cosmos DB every 5 seconds. For the dashboard to display data, the `scada` simulator and processor must have been run at least once.
-
-## Project Decisions
-
-Major architectural decisions, troubleshooting steps, and operational workflows are documented in `PROJECT-DECISIONS.md`. This file is essential reading for understanding the "why" behind the technical implementation.
-
-## Next Steps
-
-With the foundational data pipeline and initial dashboard in place, the next phases of the project will focus on:
-
-1.  **Data Query API:** Develop a more sophisticated API to allow for querying and filtering data from Cosmos DB.
-2.  **Agent Framework:** Begin development of the multi-agent system in the `/agents` directory.
-3.  **Advanced Visualization:** Enhance the dashboard with more complex visualizations, such as time-series charts and geographical maps for GPS data.
+Please read `CONTRIBUTING.md` for details on our code of conduct and the process for submitting pull requests.
 
 ---
 
@@ -229,4 +346,113 @@ With the foundational data pipeline and initial dashboard in place, the next pha
 - PyFlink is suitable for prototyping and simple pipelines, but not for advanced or production workloads.
 - Java/Scala Flink development requires a local JDK (and Scala for Scala jobs). PyFlink only requires Python, but with noted limitations.
 - Flink integration will be developed in a new branch for clean iteration and review.
+
+## Project Evolution: From Python Ingestion to Advanced Flink Stream Processing
+
+### Phase 1: Python-Based Stream Processor (Foundational Ingestion)
+
+- The project began with a unified Python stream processor (`event_stream_processor.py`) that consumes events from Azure Event Hubs and writes them to Cosmos DB.
+- This approach prioritized rapid prototyping, secure authentication (using Azure AD and Key Vault), and robust infrastructure-as-code (Terraform) for all Azure resources.
+- The Python processor uses `DefaultAzureCredential` for passwordless authentication and programmatically ensures Cosmos DB containers and indexes exist, making onboarding and local development seamless.
+- All simulators (SCADA, PLC, GPS) generate cryptographically unique event IDs at the source, ensuring data integrity and traceability throughout the pipeline.
+- The Python ingestion pipeline is still the recommended starting point for new developers and is ideal for simple, stateless processing and rapid iteration.
+
+### Phase 2: Advanced Stream Processing with Apache Flink (Java)
+
+- As requirements for real-time analytics, cross-stream joins, and stateful processing emerged, the project evolved to include a Java-based Flink job (`flink-java`).
+- Flink connects to Azure Event Hubs using the Kafka protocol endpoint, enabling high-throughput, low-latency stream processing with full support for event-time semantics and advanced windowing.
+- The Flink job demonstrates:
+  - **Cross-Stream Join:** Joins SCADA and GPS streams by device/unit ID within a configurable time window using Flink's `intervalJoin` API. This enables event correlation and enrichment (e.g., associating sensor readings with location data).
+  - **Stateful Processing:** Implements windowed aggregations (such as moving averages) using Flink's keyed state and window APIs. This is the foundation for anomaly detection, trend analysis, and other advanced analytics.
+  - **Output Enrichment:** The joined and aggregated results can be written to Cosmos DB or other sinks, making them available for downstream applications and dashboards.
+- The Flink reference implementation is modular and extensible, serving as a template for future analytical features and production workloads.
+
+### Why This Evolution?
+- **Iterative Value:** Starting with Python allowed the team to deliver a working ingestion pipeline quickly, validate the architecture, and focus on security and developer experience.
+- **Separation of Concerns:** The Python processor is optimized for ingestion and durability; Flink is introduced for advanced analytics and real-time intelligence.
+- **Open Collaboration:** By supporting both AMQP (Python SDK) and Kafka (Flink/Java) protocols on Event Hubs, the platform is accessible to a wide range of developers and tools.
+- **Scalability:** Flink's distributed architecture and stateful processing capabilities enable the platform to scale to complex, high-volume workloads as requirements grow.
+
+### Example: Flink Reference Implementation Features
+
+- **Cross-Stream Join:**
+  - Joins SCADA and GPS events by device/unit ID and event time window (e.g., ±30 seconds).
+  - Uses Flink's `intervalJoin` or `CoProcessFunction` for event correlation.
+- **Stateful Windowed Aggregation:**
+  - Computes moving averages and other aggregations over sliding windows using Flink's window APIs.
+  - Supports anomaly detection and trend analysis.
+- **Output Enrichment:**
+  - Produces enriched event objects that combine data from multiple streams.
+  - Results can be written to Cosmos DB or other sinks for use by dashboards and agents.
+
+### Running the Flink Reference Job
+
+- See the [Flink Configuration](#flink-configuration) and [Running the Flink Job](#running-the-flink-job) sections above for detailed setup and execution instructions.
+- The Flink job is designed to be run in a local or cloud Flink cluster, with all configuration managed via environment variables and `.env` files for consistency with the rest of the platform.
+
+### Developer Workflow and Best Practices
+
+- **Edit in Windows/VS Code, Build in WSL:**
+  - For maximum compatibility, edit Java code in VS Code on Windows, but build and run Flink jobs in WSL (Ubuntu) or Linux. This avoids issues with line endings, permissions, and deprecated Windows support in Flink.
+  - Set `JAVA_HOME` and `PATH` in your WSL environment as described in the [PROJECT-DECISIONS.md](PROJECT-DECISIONS.md) and this README.
+- **Branching Strategy:**
+  - All new features and prototypes are developed in dedicated feature branches and merged into `main` after review and testing.
+- **Comprehensive Documentation:**
+  - All major architectural decisions, troubleshooting steps, and developer workflows are documented in `PROJECT-DECISIONS.md` and this README for future reference and onboarding.
+
+## Viewing Events: Dashboard Web UI
+
+The platform includes a web-based dashboard for visualizing event data and system status. The dashboard is implemented as a Flask application in the `dashboard/` directory.
+
+### How to Run the Dashboard
+
+1. **Navigate to the dashboard directory:**
+    ```powershell
+    cd dashboard
+    ```
+2. **(Optional) Create and activate a Python virtual environment:**
+    ```powershell
+    python -m venv .venv
+    .venv\Scripts\Activate
+    ```
+3. **Install dependencies:**
+    ```powershell
+    pip install -r requirements.txt
+    ```
+4. **Run the Flask app:**
+    ```powershell
+    python app.py
+    ```
+    By default, the dashboard will be available at:
+    
+    **http://localhost:5000**
+
+    If you want to run the dashboard on a different port, you can set the `PORT` environment variable before running the app:
+    ```powershell
+    $env:PORT=8080
+    python app.py
+    ```
+    The dashboard will then be available at `http://localhost:8080`.
+
+### Accessing the Dashboard
+
+- Open your browser and go to [http://localhost:5000](http://localhost:5000) (or the port you specified).
+- The dashboard will display real-time or recent event data ingested by the platform.
+
+**Note:**
+- The dashboard is in active development. Features and UI may change.
+- Ensure the simulators and event stream processor are running so that data is available for visualization.
+- For troubleshooting, check the terminal output for errors when starting the dashboard.
+
+---
+
+## Flink and CosmosDB Integration Testing (Deferred)
+
+> **Note:** Integration testing between the Flink job and Azure Cosmos DB is currently **deferred**. The Flink reference implementation is scaffolded and documented, but end-to-end integration and validation with Cosmos DB will be completed in a future phase. This allows the team to focus on agent/AI integration and other platform priorities. 
+>
+> **Reference Implementation:** The Python event stream processor (`event_stream_processor.py`) provides a fully documented, working example of Cosmos DB integration using Azure AD authentication and the Azure SDK. Users seeking to understand or reuse Cosmos DB integration patterns should refer to the Python implementation and its documentation in this repository.
+>
+> Please refer to this section for updates on Flink/CosmosDB testing status.
+
+---
 
