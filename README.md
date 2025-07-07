@@ -15,7 +15,9 @@ The platform consists of several key components:
 - **Web UI (`/dashboard`):** (In Development) A real-time dashboard for visualizing data and system status.
 - **Intelligent Agents (`/agents`):** (In Development) The framework for building multi-agent systems that can analyze data and perform autonomous actions.
 
-For a visual representation, see the [architecture diagram](industrial_architecture_diagram.html).
+For a visual representation, see the image below:
+
+![Industrial Digital Twin Architecture](docs/industrial_architecture_diagram.png)
 
 ## Getting Started
 
@@ -291,6 +293,8 @@ industrial-digital-twin-multiagent-platform/
 ├── agents/                   # Python code for intelligent agents (in development)
 ├── dashboard/                # Web-based UI for data visualization (in development)
 ├── docs/                     # Project documentation and architecture diagrams
+│   ├── industrial_architecture_diagram.png   # Architecture diagram (image)
+│   └── ...
 ├── flink-java/               # Maven project for the Flink Java stream processor
 │   ├── src/main/java/com/industrialdigitaltwin/flink/
 │   │   ├── StreamingJob.java         # Main Flink job (reference implementation)
