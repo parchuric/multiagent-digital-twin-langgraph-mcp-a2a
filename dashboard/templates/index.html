@@ -4,299 +4,222 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Industrial Digital Twin - Real-Time Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 20px; }
-        h1 { text-align: center; color: #1a237e; }
-        #status-indicators { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; }
-        .status-box { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); padding: 12px 24px; text-align: center; }
-        .status-label { font-weight: bold; color: #1a237e; }
-        .status-value { font-size: 1.5em; color: #d32f2f; }
-        #events-container { max-width: 1200px; margin: 20px auto; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; }
-        pre { background-color: #2d2d2d; color: #f2f2f2; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; }
-        .event { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
-        .event:last-child { border-bottom: none; }
-        #map { height: 350px; width: 100%; margin: 0 auto 20px auto; border-radius: 8px; display: none; }
-        .stream-tile {
-            background: #fff;
-            border: 2px solid #1a237e;
-            color: #1a237e;
-            border-radius: 8px;
-            padding: 10px 28px;
-            font-size: 1em;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background 0.2s, color 0.2s, border 0.2s;
+        body, html {
+            height: 100%;
+            background-color: #f0f2f5;
         }
-        .stream-tile.selected, .stream-tile:focus {
-            background: #1a237e;
-            color: #fff;
-            border: 2px solid #3949ab;
-            outline: none;
+        .main-container {
+            height: calc(100% - 100px); /* Adjust based on header height */
+        }
+        .card {
+            height: 100%;
+        }
+        .card-body-flex {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        #chat-body, #event-log-body {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+        .chat-message {
+            margin-bottom: 15px;
+        }
+        .chat-message.user {
+            text-align: right;
+        }
+        .chat-message .message-bubble {
+            display: inline-block;
+            padding: 10px 15px;
+            border-radius: 20px;
+            max-width: 80%;
+        }
+        .chat-message.user .message-bubble {
+            background-color: #007bff;
+            color: white;
+        }
+        .chat-message.agent .message-bubble {
+            background-color: #e9ecef;
+            color: #333;
+        }
+        .stream-selector .btn {
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .agent-answer {
+            white-space: pre-wrap; /* Preserve whitespace and newlines */
+            word-wrap: break-word;   /* Break long words if necessary */
         }
     </style>
 </head>
 <body>
+    <div class="container-fluid d-flex flex-column h-100">
+        <h1 class="text-center my-4">Industrial Digital Twin - Multi-Agent Platform</h1>
+        <div class="row flex-grow-1 main-container">
+            <!-- Agent Chat Panel -->
+            <div class="col-md-4 h-100">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Agent Chat</h5>
+                        <div id="stream-selector-chat" class="btn-group btn-group-sm stream-selector" role="group">
+                            <button type="button" class="btn btn-primary" data-stream="scada">SCADA</button>
+                            <button type="button" class="btn btn-outline-primary" data-stream="plc">PLC</button>
+                            <button type="button" class="btn btn-outline-primary" data-stream="gps">GPS</button>
+                        </div>
+                    </div>
+                    <div class="card-body card-body-flex">
+                        <div id="chat-body" class="mb-3">
+                            <!-- Chat messages will be appended here -->
+                        </div>
+                        <div class="input-group mt-auto">
+                            <input type="text" id="agent-question" class="form-control" placeholder="Ask the agent a question...">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary" type="button" id="ask-agent-btn">Ask</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-    <h1>Real-Time Event Stream Dashboard</h1>
-
-    <div id="status-indicators">
-        <div class="status-box">
-            <div class="status-label">SCADA Errors/Status</div>
-            <div class="status-value" id="scada-status">-</div>
-        </div>
-        <div class="status-box">
-            <div class="status-label">PLC Errors/Status</div>
-            <div class="status-value" id="plc-status">-</div>
-        </div>
-        <div class="status-box">
-            <div class="status-label">GPS Errors/Status</div>
-            <div class="status-value" id="gps-status">-</div>
+            <!-- Real-Time Event Log Panel -->
+            <div class="col-md-8 h-100">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Real-Time Event Stream</h5>
+                        <div id="stream-selector-log" class="btn-group btn-group-sm stream-selector" role="group">
+                            <button type="button" class="btn btn-primary" data-stream="scada">SCADA</button>
+                            <button type="button" class="btn btn-outline-primary" data-stream="plc">PLC</button>
+                            <button type="button" class="btn btn-outline-primary" data-stream="gps">GPS</button>
+                        </div>
+                    </div>
+                    <div id="event-log-body" class="card-body">
+                        <ul class="list-group list-group-flush" id="event-list"></ul>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div style="text-align:center; margin-bottom:20px;">
-        <label style="font-weight:bold; margin-right:10px;">Select Stream Type:</label>
-        <div id="streamTypeTiles" style="display:inline-flex; gap:16px; vertical-align:middle;">
-            <button type="button" class="stream-tile" data-stream="scada">SCADA</button>
-            <button type="button" class="stream-tile" data-stream="plc">PLC</button>
-            <button type="button" class="stream-tile" data-stream="gps">GPS</button>
-        </div>
-        <label for="timeRange" style="margin-left:20px; font-weight:bold;">Time Range:</label>
-        <select id="timeRange" style="font-size:1em; padding:4px 8px;">
-            <option value="5">Last 5 min</option>
-            <option value="15">Last 15 min</option>
-            <option value="60">Last 1 hour</option>
-            <option value="all">All</option>
-        </select>
-    </div>
-
-    <div id="map"></div>
-    <div id="chart-container" style="max-width:1200px; margin:0 auto 20px auto;"></div>
-    <div id="events-container">
-        <p>Loading events...</p>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script>
-        let currentStreamType = 'scada';
-        let currentTimeRange = '5';
-        const streamTypeSelect = document.getElementById('streamType');
-        const timeRangeSelect = document.getElementById('timeRange');
-        let chart = null;
-        let map = null;
-        let markers = [];
+        $(document).ready(function() {
+            let currentLogStreamType = 'scada';
+            let currentChatStreamType = 'scada';
+            const chatHistories = {
+                scada: '',
+                plc: '',
+                gps: ''
+            };
 
-        async function fetchStatusIndicators() {
-            try {
-                const response = await fetch('/api/events_status');
-                const status = await response.json();
-                document.getElementById('scada-status').textContent = status.scada ?? '-';
-                document.getElementById('plc-status').textContent = status.plc ?? '-';
-                document.getElementById('gps-status').textContent = status.gps ?? '-';
-            } catch (e) {
-                document.getElementById('scada-status').textContent = '-';
-                document.getElementById('plc-status').textContent = '-';
-                document.getElementById('gps-status').textContent = '-';
-            }
-        }
-
-        async function fetchGpsMap() {
-            const mapDiv = document.getElementById('map');
-            if (currentStreamType !== 'gps') {
-                mapDiv.style.display = 'none';
-                if (map) map.remove();
-                return;
-            }
-            mapDiv.style.display = 'block';
-            if (!map) {
-                map = L.map('map').setView([37.0902, -95.7129], 4); // Center on US
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors'
-                }).addTo(map);
-            }
-            // Remove old markers
-            markers.forEach(m => map.removeLayer(m));
-            markers = [];
-            try {
-                const response = await fetch('/api/gps_map');
-                const gpsData = await response.json();
-                gpsData.forEach(device => {
-                    if (device.latitude && device.longitude) {
-                        // Color marker based on geofence_violations
-                        let markerColor = device.geofence_violations > 0 ? 'red' : 'green';
-                        const marker = L.circleMarker([device.latitude, device.longitude], {
-                            color: markerColor,
-                            radius: 8,
-                            fillOpacity: 0.8
-                        }).addTo(map);
-                        marker.bindPopup(
-                            `<b>Device:</b> ${device.deviceId}<br>` +
-                            `<b>Timestamp:</b> ${device.timestamp || ''}<br>` +
-                            `<b>Speed:</b> ${device.speed || ''} km/h<br>` +
-                            `<b>Altitude:</b> ${device.altitude || ''} m<br>` +
-                            `<b>Heading:</b> ${device.heading || ''}°<br>` +
-                            `<b>Delivery Status:</b> ${device.delivery_status || ''}<br>` +
-                            `<b>Geofence Violations:</b> ${device.geofence_violations || 0}`
-                        );
-                        markers.push(marker);
+            // --- Function to fetch and display events for the main log ---
+            function fetchEvents(streamType) {
+                console.log(`Fetching events for: ${streamType}`);
+                $.get(`/api/events/${streamType}`, function(data) {
+                    const eventList = $('#event-list');
+                    eventList.empty();
+                    if (Array.isArray(data)) {
+                        data.forEach(function(event) {
+                            const friendlyTimestamp = new Date(event.timestamp).toLocaleString();
+                            const eventHtml = `<li class="list-group-item">
+                                <strong>${friendlyTimestamp}</strong> - [${event.deviceId || 'N/A'}] - ${JSON.stringify(event.payload || event)}
+                            </li>`;
+                            eventList.append(eventHtml);
+                        });
                     }
+                }).fail(function() {
+                    $('#event-list').html('<li class="list-group-item text-danger">Error loading events.</li>');
                 });
-                if (gpsData.length > 0) {
-                    const first = gpsData[0];
-                    map.setView([first.latitude, first.longitude], 10);
-                }
-            } catch (e) {
-                // Ignore map errors
             }
-        }
 
-        async function fetchEvents() {
-            // Save scroll position
-            const scrollY = window.scrollY;
-            try {
-                let url = `/api/events/${currentStreamType}`;
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                let events = await response.json();
-                const container = document.getElementById('events-container');
-                container.innerHTML = '';
-
-                // Filter by time range if not 'all'
-                if (currentTimeRange !== 'all') {
-                    const now = new Date();
-                    const minTime = new Date(now.getTime() - parseInt(currentTimeRange) * 60000);
-                    events = events.filter(ev => {
-                        // Accept event if timestamp is missing or invalid (show it)
-                        if (!ev.timestamp || isNaN(Date.parse(ev.timestamp))) return true;
-                        const t = new Date(ev.timestamp);
-                        return t >= minTime;
-                    });
-                }
-
-                if (events.error) {
-                    container.innerHTML = `<p>Error loading events: ${events.error}</p>`;
-                    return;
-                }
-
-                if (events.length === 0) {
-                    container.innerHTML = '<p>No events found.</p>';
-                    if (chart) chart.destroy();
-                    document.getElementById('chart-container').innerHTML = '';
-                    return;
-                }
-
-                // Show chart for numeric fields
-                renderChart(events);
-
-                events.forEach(event => {
-                    const eventElement = document.createElement('div');
-                    eventElement.className = 'event';
-                    const eventJson = JSON.stringify(event, null, 2);
-                    eventElement.innerHTML = `<pre>${eventJson}</pre>`;
-                    container.appendChild(eventElement);
-                });
-
-            } catch (error) {
-                const container = document.getElementById('events-container');
-                container.innerHTML = `<p>Failed to fetch events. Is the Flask server running? Is the simulator sending data? Error: ${error.message}</p>`;
-                console.error('Error fetching events:', error);
-            } finally {
-                // Restore scroll position
-                window.scrollTo({ top: scrollY, behavior: 'auto' });
-            }
-        }
-
-        function renderChart(events) {
-            const chartContainer = document.getElementById('chart-container');
-            chartContainer.innerHTML = '<canvas id="eventChart" height="80"></canvas>';
-            const ctx = document.getElementById('eventChart').getContext('2d');
-            // Pick a field to chart based on stream type
-            let label = '', data = [], labels = [];
-            if (currentStreamType === 'scada') {
-                label = 'temperature';
-                data = events.map(e => e.temperature);
-                labels = events.map(e => e.timestamp || '');
-            } else if (currentStreamType === 'plc') {
-                label = 'cycle_time';
-                data = events.map(e => e.cycle_time);
-                labels = events.map(e => e.timestamp || '');
-            } else if (currentStreamType === 'gps') {
-                label = 'speed';
-                data = events.map(e => e.speed);
-                labels = events.map(e => e.timestamp || '');
-            }
-            if (chart) chart.destroy();
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: label,
-                        data: data,
-                        borderColor: '#1a237e',
-                        backgroundColor: 'rgba(26,35,126,0.1)',
-                        fill: true,
-                        tension: 0.2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: { display: true }
-                    },
-                    scales: {
-                        x: { display: false },
-                        y: { beginAtZero: true }
-                    }
-                }
-            });
-        }
-
-        // Remove the old select element for streamType
-        document.addEventListener('DOMContentLoaded', function() {
-            const oldSelect = document.getElementById('streamType');
-            if (oldSelect) oldSelect.style.display = 'none';
-            // Tile selection logic
-            const tiles = document.querySelectorAll('.stream-tile');
-            function updateTileSelection(selected) {
-                tiles.forEach(tile => {
-                    if (tile.dataset.stream === selected) {
-                        tile.classList.add('selected');
+            // --- Function to handle button group active state ---
+            function setActiveButton(groupSelector, selectedStream) {
+                $(groupSelector).find('.btn').each(function() {
+                    const $btn = $(this);
+                    if ($btn.data('stream') === selectedStream) {
+                        $btn.removeClass('btn-outline-primary').addClass('btn-primary');
                     } else {
-                        tile.classList.remove('selected');
+                        $btn.removeClass('btn-primary').addClass('btn-outline-primary');
                     }
                 });
             }
-            tiles.forEach(tile => {
-                tile.addEventListener('click', function() {
-                    currentStreamType = this.dataset.stream;
-                    updateTileSelection(currentStreamType);
-                    fetchEvents();
-                    fetchGpsMap();
+
+            // --- Event handler for the log's stream selector ---
+            $('#stream-selector-log .btn').click(function() {
+                currentLogStreamType = $(this).data('stream');
+                setActiveButton('#stream-selector-log', currentLogStreamType);
+                fetchEvents(currentLogStreamType);
+            });
+
+            // --- Initial load ---
+            fetchEvents(currentLogStreamType);
+            setInterval(() => fetchEvents(currentLogStreamType), 5000); // Poll every 5 seconds
+
+            // --- Agent Chat Logic ---
+
+            function switchChatStream(newStream) {
+                if (newStream === currentChatStreamType) return; // Do nothing if it's the same stream
+
+                // Save the current chat history
+                chatHistories[currentChatStreamType] = $('#chat-body').html();
+
+                // Update the stream type
+                currentChatStreamType = newStream;
+
+                // Load the new chat history
+                $('#chat-body').html(chatHistories[currentChatStreamType]);
+                setActiveButton('#stream-selector-chat', currentChatStreamType);
+
+                // Scroll to the bottom of the chat
+                const chatBody = $('#chat-body');
+                chatBody.scrollTop(chatBody[0].scrollHeight);
+            }
+
+            // Event handler for the chat's stream selector
+            $('#stream-selector-chat .btn').click(function() {
+                const selectedStream = $(this).data('stream');
+                switchChatStream(selectedStream);
+            });
+
+            $('#ask-agent-btn').click(function() {
+                const question = $('#agent-question').val();
+                if (!question) return;
+
+                const userHtml = `<div class="chat-message user"><div class="message-bubble"><strong>You:</strong> ${question}</div></div>`;
+                $('#chat-body').append(userHtml);
+                $('#agent-question').val('');
+                const chatBody = $('#chat-body');
+                chatBody.scrollTop(chatBody[0].scrollHeight);
+
+                $.ajax({
+                    url: '/api/ask',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ question: question, stream_type: currentChatStreamType }),
+                    success: function(response) {
+                        let answer = response.answer || (response.error ? `Error: ${response.error}` : 'No response from agent.');
+                        const agentHtml = `<div class="chat-message agent"><div class="message-bubble"><strong>Agent:</strong><div class="agent-answer">${answer}</div></div></div>`;
+                        $('#chat-body').append(agentHtml);
+                        chatBody.scrollTop(chatBody[0].scrollHeight);
+                    },
+                    error: function() {
+                        const errorHtml = '<div class="chat-message agent"><div class="message-bubble"><strong>Agent:</strong> Failed to get a response from the server.</div></div>';
+                        $('#chat-body').append(errorHtml);
+                        chatBody.scrollTop(chatBody[0].scrollHeight);
+                    }
                 });
             });
-            // Set initial selection
-            updateTileSelection(currentStreamType);
-        });
-
-        timeRangeSelect.addEventListener('change', function() {
-            currentTimeRange = this.value;
-            fetchEvents();
-        });
-
-        setInterval(fetchEvents, 5000);
-        setInterval(fetchStatusIndicators, 10000);
-        setInterval(fetchGpsMap, 10000);
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchEvents();
-            fetchStatusIndicators();
-            fetchGpsMap();
+            
+            $('#agent-question').keypress(function(e) {
+                if (e.which === 13) {
+                    $('#ask-agent-btn').click();
+                    return false;
+                }
+            });
         });
     </script>
-
 </body>
 </html>

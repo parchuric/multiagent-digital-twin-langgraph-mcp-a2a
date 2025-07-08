@@ -15,9 +15,38 @@ The platform consists of several key components:
 - **Web UI (`/dashboard`):** (In Development) A real-time dashboard for visualizing data and system status.
 - **Intelligent Agents (`/agents`):** (In Development) The framework for building multi-agent systems that can analyze data and perform autonomous actions.
 
-For a visual representation, see the image below:
+The following diagram illustrates the high-level architecture of the platform:
 
-![Industrial Digital Twin Architecture](docs/industrial_architecture_diagram.png)
+![Architecture Diagram](docs/industrial_architecture_diagram.png)
+
+## Multi-Agent System Implementation Strategy
+
+The platform is being evolved to include a multi-agent system for intelligent data analysis and interaction. The implementation follows a phased approach:
+
+### Phase 1: The Foundational `DataQueryAgent`
+A single agent integrated into the dashboard that can answer natural language questions about the event data.
+
+#### Agent Data Flow
+
+To ensure clarity, here is a step-by-step breakdown of how the agent retrieves and uses data:
+
+1.  **Cosmos DB as the Source of Truth:** The raw event data from the SCADA, PLC, and GPS simulators is permanently stored in Azure Cosmos DB.
+2.  **Backend Caching:** The backend Flask application (`dashboard/app.py`) reads the latest events from Cosmos DB and maintains a recent history of these events in memory. This caching strategy ensures the dashboard is fast and responsive, as it avoids querying the database for every user interaction.
+3.  **User Interaction:** When a user asks a question in the agent chat window, the browser sends the question and the currently selected stream type (e.g., 'scada') to the `/api/ask` endpoint in the Flask application.
+4.  **Agent Invocation:** The `/api/ask` endpoint invokes the `DataQueryAgent`. It provides the agent with the user's question and the relevant cached data stream from its memory.
+5.  **LLM-Powered Analysis:** The agent then sends the question and the data to the configured Azure OpenAI Large Language Model (LLM). The LLM analyzes the data in the context of the question and generates a natural language response.
+6.  **Displaying the Response:** The agent's response is sent back to the user's browser and displayed in the chat window.
+
+In summary, the agent uses data that originates from Cosmos DB but accesses it via the backend's in-memory cache for performance. It does **not** directly query the database or call a separate API endpoint to get its data.
+
+### Phase 2: Agent Specialization and A2A Communication
+A second `AnalysisAgent` is introduced, enabling agent-to-agent communication for more complex data analysis tasks.
+
+### Phase 3: Formalizing Communication with MCP
+Basic A2A communication is replaced with a formal, scalable Model Context Protocol (MCP) server, decoupling the agents.
+
+### Phase 4: Advanced Orchestration and Scaling
+A sophisticated orchestration layer is built to manage complex workflows across a growing number of specialized agents.
 
 ## Getting Started
 
@@ -204,7 +233,7 @@ python run_simulation.py
 
 Terminal 2 (optional, for a specific processor):
 ```sh
-python event_stream_processor.py --stream-type scada
+python event_stream_processor.py --stream_type scada
 ```
 
 **Notes:**
@@ -328,10 +357,6 @@ industrial-digital-twin-multiagent-platform/
 - **Simulators** and **stream processors** are decoupled, supporting both Python and Java (Flink) implementations.
 - **Documentation** is comprehensive, with all major decisions and troubleshooting steps logged for future reference.
 
-## Contributing
-
-Please read `CONTRIBUTING.md` for details on our code of conduct and the process for submitting pull requests.
-
 ---
 
 ## Platform Limitations: Process Management on Windows
@@ -402,7 +427,7 @@ Please read `CONTRIBUTING.md` for details on our code of conduct and the process
 - **Branching Strategy:**
   - All new features and prototypes are developed in dedicated feature branches and merged into `main` after review and testing.
 - **Comprehensive Documentation:**
-  - All major architectural decisions, troubleshooting steps, and developer workflows are documented in `PROJECT-DECISIONS.md` and this README for future reference and onboarding.
+  - All major architectural decisions, and developer workflows are documented in this README for future reference and onboarding.
 
 ## Viewing Events: Dashboard Web UI
 

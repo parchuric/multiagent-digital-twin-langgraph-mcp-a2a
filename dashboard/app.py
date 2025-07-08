@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 import os
+import sys
 from azure.cosmos import CosmosClient
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
@@ -9,9 +10,21 @@ from datetime import datetime, timezone
 # Always load .env from project root
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 load_dotenv(dotenv_path=os.path.join(root_dir, '.env'))
+sys.path.insert(0, root_dir) # Add root to path for agent import
+
+from agents.data_query_agent import create_agent_executor
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Initialize Agent Executor
+# Note: This requires OPENAI_API_KEY to be set in the .env file
+try:
+    agent_executor = create_agent_executor()
+    print("[INFO] Agent executor created successfully.")
+except Exception as e:
+    agent_executor = None
+    print(f"[ERROR] Failed to create agent executor: {e}. The /api/ask endpoint will be disabled.")
 
 # Cosmos DB configuration
 COSMOS_DB_ENDPOINT = os.environ["COSMOS_DB_ENDPOINT"]
@@ -104,10 +117,35 @@ def get_events_status():
         print(f"[ERROR] Exception in /api/events_status: {e}")
         return jsonify({"error": str(e)}), 500
 
-# Backward compatible default route for scada
-@app.route('/api/events')
-def get_events():
-    return get_events_by_type("scada")
+@app.route('/api/ask', methods=['POST'])
+def ask_agent():
+    """Receives a question from the user, passes it to the LangChain agent, and returns the answer."""
+    if not agent_executor:
+        return jsonify({"error": "Agent is not configured. Please check server logs for details (e.g., missing OPENAI_API_KEY)."}), 503
+
+    if not request.json or 'question' not in request.json:
+        return jsonify({"error": "Invalid request. 'question' field is required."}), 400
+
+    question = request.json['question']
+    stream_type = request.json.get('stream_type', 'scada') # Default to scada if not provided
+
+    # Enhance the question with context from the selected stream type
+    enhanced_question = f"Regarding the '{stream_type}' data stream, {question}"
+
+    print(f"[DEBUG] /api/ask received question: {enhanced_question}")
+
+    try:
+        # Invoke the agent with the enhanced question
+        response = agent_executor.invoke({"input": enhanced_question})
+        answer = response.get('output', 'Sorry, I could not find an answer.')
+        print(f"[DEBUG] Agent response: {answer}")
+        return jsonify({"answer": answer})
+    except Exception as e:
+        print(f"[ERROR] Exception in /api/ask: {e}")
+        return jsonify({"error": f"An error occurred while processing your question: {e}"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    # Running with use_reloader=False is important to prevent the server from
+    # restarting when the OpenAI library modifies its own files.
+    # The default port is 5000, but we use 5001 to avoid potential conflicts.
+    app.run(debug=True, use_reloader=False, port=5001)
