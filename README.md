@@ -39,8 +39,25 @@ To ensure clarity, here is a step-by-step breakdown of how the agent retrieves a
 
 In summary, the agent uses data that originates from Cosmos DB but accesses it via the backend's in-memory cache for performance. It does **not** directly query the database or call a separate API endpoint to get its data.
 
-### Phase 2: Agent Specialization and A2A Communication
-A second `AnalysisAgent` is introduced, enabling agent-to-agent communication for more complex data analysis tasks.
+### Phase 2: Event-Driven A2A Communication with `AnalysisAgent`
+
+Goal: Introduce a second agent, the `AnalysisAgent`, and enable scalable, event-driven communication between agents using Azure Event Hubs. This transitions the platform from a single-agent system to a true multi-agent architecture.
+
+#### Core Technologies:
+- **Azure Event Hubs:** For asynchronous, decoupled agent-to-agent (A2A) communication.
+- **LangChain:** For agent implementation and orchestration.
+
+#### Implementation Strategy:
+
+1.  **New `AnalysisAgent`:** A new Python agent will be created (`agents/analysis_agent.py`). Its primary role is to perform deeper analysis on data, such as calculating moving averages, detecting anomalies, or summarizing trends. It will not directly interface with the user.
+2.  **Event Hubs for A2A:** Instead of direct function calls, agents will communicate via dedicated Event Hubs topics. This creates a pub/sub model:
+    *   The `DataQueryAgent`, upon request from the UI, will fetch data and publish it to an `agent-data` topic in Event Hubs.
+    *   The `AnalysisAgent` will subscribe to this topic, process the data it receives, and publish its findings (e.g., an alert or a summary) to an `agent-analysis-results` topic.
+3.  **Orchestration:** The backend application (`dashboard/app.py`) will be updated to manage this flow. It will orchestrate the initial data query and listen for results from the `AnalysisAgent` to display to the user.
+
+This event-driven pattern provides a robust foundation for adding more specialized agents in the future without creating tight coupling between them.
+
+**Note on Event Hubs Topics:** It is a core architectural principle that the Event Hubs topics used for raw data ingestion from simulators (e.g., `scada-production-hub`) are kept separate from the topics used for agent-to-agent communication (`agent-data`, `agent-analysis-results`). This separation of concerns ensures the platform is scalable, maintainable, and easy to debug.
 
 ### Phase 3: Formalizing Communication with MCP
 Basic A2A communication is replaced with a formal, scalable Model Context Protocol (MCP) server, decoupling the agents.
@@ -120,7 +137,28 @@ The application uses `DefaultAzureCredential` for secure, passwordless access to
     KEY_VAULT_URI="https://<your-key-vault-name>.vault.azure.net/"
     ```
 
-2.  **Assign RBAC Permissions:**
+2.  **Configure Event Hubs Connection for Agents:**
+    For the agents to communicate via Event Hubs, they need a connection string with access to the namespace.
+    
+    First, retrieve the connection string using the Azure CLI. The following command gets the primary connection string for the default access policy on your Event Hubs namespace:
+    ```powershell
+    # PowerShell
+    $eventHubConnectionString = az eventhubs namespace authorization-rule keys list --resource-group idtwin-dev-rg --namespace-name idtwin-dev-ehns --name RootManageSharedAccessKey --query primaryConnectionString --output tsv
+    echo "EVENT_HUB_CONNECTION_STR=`"$eventHubConnectionString`"" | Out-File -Append -Encoding utf8 .env
+    ```
+    ```sh
+    # Bash
+    eventHubConnectionString=$(az eventhubs namespace authorization-rule keys list --resource-group idtwin-dev-rg --namespace-name idtwin-dev-ehns --name RootManageSharedAccessKey --query primaryConnectionString --output tsv)
+    echo "EVENT_HUB_CONNECTION_STR="$eventHubConnectionString"" >> .env
+    ```
+    This will automatically append the `EVENT_HUB_CONNECTION_STR` to the `.env` file in your current directory. Make sure you run this from the project root where your `.env` file is located.
+
+    Alternatively, you can run the `az` command and manually copy the output into your `.env` file like this:
+    ```
+    EVENT_HUB_CONNECTION_STR="Endpoint=sb://...;SharedAccessKeyName=...;SharedAccessKey=...;EntityPath=..."
+    ```
+
+3.  **Assign RBAC Permissions:**
     Your user account needs data-plane permissions on the Azure resources. Run the following Azure CLI commands, replacing `<your-principal-object-id>` with your user's Object ID (`az ad signed-in-user show --query id -o tsv`).
 
     ```sh
@@ -142,7 +180,20 @@ The application uses `DefaultAzureCredential` for secure, passwordless access to
     az role assignment create --role "Contributor" --assignee $PRINCIPAL_ID --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/idtwin-dev-rg/providers/Microsoft.DocumentDB/databaseAccounts/$COSMOS_DB_ACCOUNT"
     ```
 
-3.  **Configure Firewalls:**
+4.  **Add Event Hubs Connection String to `.env`**:
+    The agent-to-agent communication requires a connection string for the Event Hubs Namespace. Retrieve it using the Azure CLI and add it to your root `.env` file.
+
+    ```powershell
+    # Get the connection string
+    $eventHubConnectionString = az eventhubs namespace authorization-rule keys list --resource-group idtwin-dev-rg --namespace-name idtwin-dev-ehns --name RootManageSharedAccessKey --query primaryConnectionString --output tsv
+
+    # Append it to your .env file
+    Add-Content -Path ".\.env" -Value "EVENT_HUB_CONNECTION_STR=\"$eventHubConnectionString\""
+    
+    echo "EVENT_HUB_CONNECTION_STR added to .env file."
+    ```
+
+5.  **Configure Firewalls:**
     For local development, add your public IP address to the firewall rules for Key Vault and Cosmos DB in the Azure Portal.
 
 ## Running a Full Simulation

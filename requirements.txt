@@ -26,7 +26,9 @@ urllib3==2.5.0
 aiohttp
 azure-mgmt-cosmosdb
 flask-cors
+Flask[async]
 
 # Agent Implementation (LangChain)
 langchain
 langchain-openai
+langchain-community
