@@ -56,8 +56,9 @@ module "postgresql" {
 module "redis" {
   source              = "../../modules/redis"
   name                = "idtwin-dev-redis"
-  location            = azurerm_resource_group.main.location
+  location            = var.location
   resource_group_name = azurerm_resource_group.main.name
+  tags                = var.tags
 }
 
 module "blob_storage" {

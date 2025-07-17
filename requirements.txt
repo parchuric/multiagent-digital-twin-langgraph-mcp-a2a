@@ -32,3 +32,14 @@ Flask[async]
 langchain
 langchain-openai
 langchain-community
+
+# MCP Server (FastAPI, Redis, Event Hubs)
+fastapi
+uvicorn[standard]
+redis
+pydantic
+streamlit
+plotly
+pandas
+geopandas
+pydeck

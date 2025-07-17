@@ -1,9 +1,17 @@
-variable "location" { default = "East US 2" }
-variable "resource_group_name" { default = "idtwin-dev-rg" }
-variable "postgresql_location" {
-  description = "Azure region for PostgreSQL Flexible Server (use a region with available capacity)"
-  type        = string
-  default     = "Central US"
+# File: terraform/environments/dev/variables.tf
+
+variable "tags" {
+  description = "Tags to apply to resources in this environment."
+  type        = map(string)
+  default     = {}
 }
 
-# Add more variables as needed for each module
+variable "resource_group_name" {
+  description = "Name of the resource group for the environment."
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region for the environment."
+  type        = string
+}

@@ -1,0 +1,81 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Industrial Digital Twin Multi-Agent Platform" id="1">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <!-- Simulators -->
+        <mxCell id="2" value="SCADA Simulator" style="rounded=1;fillColor=#e1f5fe;strokeColor=#0288d1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="3" value="PLC Simulator" style="rounded=1;fillColor=#e1f5fe;strokeColor=#0288d1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="120" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="4" value="GPS Simulator" style="rounded=1;fillColor=#e1f5fe;strokeColor=#0288d1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <!-- Event Hubs -->
+        <mxCell id="5" value="Azure Event Hubs" style="rounded=1;fillColor=#fff3e0;strokeColor=#f57c00;" vertex="1" parent="1">
+          <mxGeometry x="240" y="100" width="160" height="60" as="geometry"/>
+        </mxCell>
+        <!-- Stream Processors -->
+        <mxCell id="6" value="Python Stream Processor" style="rounded=1;fillColor=#e8f5e9;strokeColor=#388e3c;" vertex="1" parent="1">
+          <mxGeometry x="460" y="60" width="180" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="7" value="Flink (Java) Stream Processor" style="rounded=1;fillColor=#e8f5e9;strokeColor=#388e3c;" vertex="1" parent="1">
+          <mxGeometry x="460" y="120" width="180" height="40" as="geometry"/>
+        </mxCell>
+        <!-- Cosmos DB -->
+        <mxCell id="8" value="Azure Cosmos DB" style="rounded=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;" vertex="1" parent="1">
+          <mxGeometry x="700" y="60" width="160" height="60" as="geometry"/>
+        </mxCell>
+        <!-- Key Vault -->
+        <mxCell id="9" value="Azure Key Vault" style="rounded=1;fillColor=#fce4ec;strokeColor=#ad1457;" vertex="1" parent="1">
+          <mxGeometry x="700" y="140" width="160" height="40" as="geometry"/>
+        </mxCell>
+        <!-- Agents -->
+        <mxCell id="10" value="Agents (DataQueryAgent, AnalysisAgent)" style="rounded=1;fillColor=#fffde7;strokeColor=#fbc02d;" vertex="1" parent="1">
+          <mxGeometry x="940" y="60" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <!-- Dashboard -->
+        <mxCell id="11" value="Dashboard (Streamlit)" style="rounded=1;fillColor=#e0f7fa;strokeColor=#00838f;" vertex="1" parent="1">
+          <mxGeometry x="940" y="140" width="200" height="40" as="geometry"/>
+        </mxCell>
+        <!-- Connections -->
+        <mxCell id="12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0288d1;" edge="1" parent="1" source="2" target="5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0288d1;" edge="1" parent="1" source="3" target="5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#0288d1;" edge="1" parent="1" source="4" target="5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#f57c00;" edge="1" parent="1" source="5" target="6">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#f57c00;" edge="1" parent="1" source="5" target="7">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#388e3c;" edge="1" parent="1" source="6" target="8">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#388e3c;" edge="1" parent="1" source="7" target="8">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7b1fa2;" edge="1" parent="1" source="8" target="10">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#ad1457;" edge="1" parent="1" source="9" target="10">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#fbc02d;" edge="1" parent="1" source="10" target="11">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#7b1fa2;" edge="1" parent="1" source="8" target="11">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

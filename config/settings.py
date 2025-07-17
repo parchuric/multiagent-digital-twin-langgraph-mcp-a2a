@@ -47,8 +47,35 @@ def get_secret(secret_name, default_value=None):
         print(f"[Config] Warning: '{secret_name}' not found in Key Vault or .env file.")
     return value
 
+def get_event_hub_connection_str():
+    """
+    Retrieves the Event Hub connection string, trying multiple secret names for compatibility:
+    1. Try 'EVENT_HUB_CONNECTION_STR' (env and Key Vault, as before)
+    2. Try 'EventHub-A2A-ConnStr' (Key Vault only)
+    3. Fallback to .env 'EventHub-A2A-ConnStr' if present
+    """
+    # 1. Try standard secret name (Key Vault and .env)
+    value = get_secret("EVENT_HUB_CONNECTION_STR")
+    if value:
+        return value
+    # 2. Try alternate Key Vault secret name
+    if secret_client:
+        try:
+            secret = secret_client.get_secret("EventHub-A2A-ConnStr")
+            print("[Config] Successfully retrieved 'EventHub-A2A-ConnStr' from Key Vault.")
+            return secret.value
+        except Exception:
+            pass
+    # 3. Fallback to .env with alternate name
+    value = os.getenv("EventHub-A2A-ConnStr")
+    if value:
+        print("[Config] Retrieved 'EventHub-A2A-ConnStr' from .env file.")
+        return value
+    print("[Config] Warning: 'EVENT_HUB_CONNECTION_STR' and 'EventHub-A2A-ConnStr' not found in Key Vault or .env file.")
+    return None
+
 # --- Azure Event Hubs ---
-EVENT_HUB_CONNECTION_STR = get_secret("EVENT_HUB_CONNECTION_STR")
+EVENT_HUB_CONNECTION_STR = get_event_hub_connection_str()
 EVENT_HUB_CONSUMER_GROUP = get_secret("EVENT_HUB_CONSUMER_GROUP", "$Default")
 
 # --- Agent-specific Topics ---

@@ -31,7 +31,12 @@ def generate_scada_event():
         "id": str(uuid.uuid4()),
         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ'),
         "MachineID": f"SCADA_{random.randint(1, 100)}",
-        "facility_id": f"FAC_{random.choice(['DE','US','CN'])}_{random.randint(1,12):02}",
+        "facility_id": random.choice([
+            "FAC_KR_01", "FAC_IN_01", "FAC_JP_01", "FAC_ZA_01", "FAC_AE_01", "FAC_BR_01",
+            "FAC_DE_07", "FAC_DE_08", "FAC_DE_12", "FAC_DE_03", "FAC_DE_01", "FAC_DE_06", "FAC_DE_05", "FAC_DE_10", "FAC_DE_09", "FAC_DE_11",
+            "FAC_US_10", "FAC_US_03", "FAC_US_11", "FAC_US_09", "FAC_US_12", "FAC_US_01", "FAC_US_02", "FAC_US_07", "FAC_US_08", "FAC_US_04",
+            "FAC_CN_11", "FAC_CN_07", "FAC_CN_06", "FAC_CN_05", "FAC_CN_03", "FAC_CN_12", "FAC_CN_01", "FAC_CN_02", "FAC_CN_08", "FAC_CN_04", "FAC_CN_10"
+        ]),
         "production_line_id": f"PL{random.randint(1,10)}",
         "equipment_tag": f"EQ{random.randint(100,999)}",
         "temperature": round(random.uniform(20, 100), 2),

@@ -1,5 +1,6 @@
 import sys
 import os
+import argparse
 
 # Add the project root to the Python path
 # This allows us to import from the 'config' module from anywhere in the project
@@ -16,6 +17,16 @@ from config.settings import (
 from azure.eventhub.aio import EventHubConsumerClient, EventHubProducerClient
 from azure.eventhub import EventData
 import json
+from mcp_server.agent_comm import LegacyCommunicator, MCPCommunicator
+
+def get_comm_mode():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--comm-mode", choices=["legacy", "mcp", "auto"], help="Agent communication mode")
+    args, _ = parser.parse_known_args()
+    return args.comm_mode or os.getenv("AGENT_COMM_MODE", "legacy").lower()
+
+COMM_MODE = get_comm_mode()
+print(f"[INFO] Agent communication mode set to: {COMM_MODE}")
 
 class AnalysisAgent:
     """
@@ -27,15 +38,31 @@ class AnalysisAgent:
         if not EVENT_HUB_CONNECTION_STR:
             raise ValueError("EVENT_HUB_CONNECTION_STR is not set. Please check your .env file.")
         
+        request_topic = os.getenv("MCP_SERVER_REQUEST_TOPIC", AGENT_DATA_TOPIC)
+        response_topic = os.getenv("MCP_SERVER_RESPONSE_TOPIC", AGENT_ANALYSIS_RESULTS_TOPIC)
+        print(f"[DEBUG] Event Hub name for requests: {request_topic}")
+        print(f"[DEBUG] Event Hub name for analysis results: {response_topic}")
+
         self.consumer_client = EventHubConsumerClient.from_connection_string(
             conn_str=EVENT_HUB_CONNECTION_STR,
             consumer_group=EVENT_HUB_CONSUMER_GROUP,
-            eventhub_name=AGENT_DATA_TOPIC,
+            eventhub_name=request_topic,
         )
         self.producer_client = EventHubProducerClient.from_connection_string(
             conn_str=EVENT_HUB_CONNECTION_STR,
-            eventhub_name=AGENT_ANALYSIS_RESULTS_TOPIC,
+            eventhub_name=response_topic,
         )
+
+        if COMM_MODE == "legacy":
+            self.communicator = LegacyCommunicator()
+        elif COMM_MODE == "mcp":
+            self.communicator = MCPCommunicator()
+        else:
+            # Optionally, try MCP and fallback to legacy
+            try:
+                self.communicator = MCPCommunicator()
+            except Exception:
+                self.communicator = LegacyCommunicator()
 
     async def on_event(self, partition_context, event):
         """

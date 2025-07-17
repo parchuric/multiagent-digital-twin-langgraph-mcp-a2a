@@ -295,9 +295,16 @@ if __name__ == '__main__':
         "--stream-type",
         type=str,
         required=True,
-        choices=list(CONFIG_MAP.keys()),
-        help="The type of event stream to process (e.g., scada, plc, gps)."
+        choices=list(CONFIG_MAP.keys()) + ["all"],
+        help="The type of event stream to process (e.g., scada, plc, gps, all)."
     )
     args = parser.parse_args()
-    
-    asyncio.run(main(args.stream_type))
+
+    async def run_all_streams():
+        tasks = [asyncio.create_task(main(stype)) for stype in CONFIG_MAP.keys()]
+        await asyncio.gather(*tasks)
+
+    if args.stream_type == "all":
+        asyncio.run(run_all_streams())
+    else:
+        asyncio.run(main(args.stream_type))

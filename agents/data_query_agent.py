@@ -1,22 +1,37 @@
 import sys
 import os
-
-# Add the project root to the Python path to enable imports from the 'config' module
-# This must be done before any other imports that rely on the config.
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, project_root)
-
-from config import settings
-
-from langchain_openai import AzureChatOpenAI
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.tools import tool
+import argparse
 import requests
 import json
 import asyncio
 from azure.eventhub import EventData
 from azure.eventhub.aio import EventHubProducerClient
+from config import settings
+from langchain_openai import AzureChatOpenAI
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.tools import tool
+from mcp_server.agent_comm import LegacyCommunicator, MCPCommunicator
+
+# --- Communication Mode ---
+# Determine the communication mode for the agent (legacy or new)
+# This can be controlled via the AGENT_COMM_MODE environment variable.
+# Default is "legacy" for backward compatibility.
+def get_comm_mode():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--comm-mode", choices=["legacy", "mcp", "auto"], help="Agent communication mode")
+    args, _ = parser.parse_known_args()
+    return args.comm_mode or os.getenv("AGENT_COMM_MODE", "legacy").lower()
+
+COMM_MODE = get_comm_mode()
+print(f"[INFO] Agent communication mode set to: {COMM_MODE}")
+eventhub_name = os.getenv("MCP_SERVER_REQUEST_TOPIC", settings.AGENT_DATA_TOPIC)
+print(f"[DEBUG] Event Hub name for publishing (startup): {eventhub_name}")
+
+# Add the project root to the Python path to enable imports from the 'config' module
+# This must be done before any other imports that rely on the config.
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_root)
 
 # --- Event Hubs Producer ---
 # Create a producer client to send messages to the event hub.
@@ -26,9 +41,10 @@ async def publish_events_to_hub(events_data: str):
         print("[WARN] EVENT_HUB_CONNECTION_STR is not set. Skipping event hub publish.")
         return
     
+    
     producer = EventHubProducerClient.from_connection_string(
         conn_str=settings.EVENT_HUB_CONNECTION_STR,
-        eventhub_name=settings.AGENT_DATA_TOPIC
+        eventhub_name=eventhub_name
     )
     async with producer:
         event_data_batch = await producer.create_batch()
@@ -131,3 +147,18 @@ def create_agent_executor():
     )
 
     return agent_executor
+
+# --- Communicator Initialization ---
+# Initialize the communicator based on the communication mode
+if COMM_MODE == "legacy":
+    communicator = LegacyCommunicator()
+elif COMM_MODE == "mcp":
+    communicator = MCPCommunicator()
+else:
+    # Optionally, try MCP and fallback to legacy
+    try:
+        communicator = MCPCommunicator()
+    except Exception:
+        communicator = LegacyCommunicator()
+
+# Use communicator.register(), communicator.send_message(), etc.
